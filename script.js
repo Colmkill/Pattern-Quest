@@ -1,11 +1,12 @@
+
     <script>
 // ============================================
 // PATTERN QUEST - Core Game State Implementation
+// Fixed: Timer visible, response options visible, continue visible
 // ============================================
 
 // ===== Game Configuration =====
 const CONFIG = {
-    // Starting values
     initialPeaceCoins: 100,
     initialSanityScraps: 0,
     initialMadness: 0,
@@ -13,26 +14,22 @@ const CONFIG = {
     initialLevel: 1,
     initialPuzzle: 1,
     
-    // Puzzle thresholds
-    puzzlesPerLevel: 100, // Puzzles 1-100 = Level 1, 101-200 = Level 2, etc.
-    puzzlesPerCycle: 500, // 500 puzzles per cycle
+    puzzlesPerLevel: 100,
+    puzzlesPerCycle: 500,
     
-    // Madness configuration
     madness: {
-        wrongAnswer: 15,      // Madness increase for wrong answer
-        timeMultiplier: 0.1,  // Madness per second (0.1 * seconds)
-        correctReduction: 2,  // Madness reduction for correct answer
-        sanityScrapValue: 10  // Madness reduction per sanity scrap
+        wrongAnswer: 15,
+        timeMultiplier: 0.1,
+        correctReduction: 2,
+        sanityScrapValue: 10
     },
     
-    // Tax configuration
-    baseTax: 10,            // Starting tax for Cycle 1
-    taxIncreasePerCycle: 5 // Tax increases by 5 each cycle
+    baseTax: 10,
+    taxIncreasePerCycle: 5
 };
 
 // ===== Game State =====
 const gameState = {
-    // Core state
     peaceCoins: CONFIG.initialPeaceCoins,
     sanityScraps: CONFIG.initialSanityScraps,
     madness: CONFIG.initialMadness,
@@ -40,12 +37,10 @@ const gameState = {
     currentLevel: CONFIG.initialLevel,
     currentPuzzle: CONFIG.initialPuzzle,
     
-    // Puzzle tracking
     puzzleStartTime: null,
     puzzleStarted: false,
     puzzleActive: false,
     
-    // Performance tracking
     correctAnswers: 0,
     incorrectAnswers: 0,
     totalResponseTime: 0,
@@ -53,23 +48,19 @@ const gameState = {
     coinsLost: 0,
     highestLevelReached: CONFIG.initialLevel,
     
-    // Current puzzle info
     currentPuzzleCategory: 'quantitative',
     currentPuzzleDifficulty: 1,
     
-    // Game flow
     gameActive: false
 };
 
 // ===== DOM Elements =====
 const elements = {
-    // Screens
     startScreen: document.getElementById('start-screen'),
     gameScreen: document.getElementById('game-screen'),
     ledgerScreen: document.getElementById('ledger-screen'),
     gameOverScreen: document.getElementById('game-over-screen'),
     
-    // Header stats
     peaceCoins: document.getElementById('peace-coins'),
     sanityScraps: document.getElementById('sanity-scraps'),
     madnessMeter: document.getElementById('madness-meter'),
@@ -77,25 +68,21 @@ const elements = {
     currentLevel: document.getElementById('current-level'),
     currentPuzzle: document.getElementById('current-puzzle'),
     
-    // Puzzle elements
     puzzleContainer: document.getElementById('puzzle-container'),
     puzzleQuestion: document.getElementById('puzzle-question'),
     puzzleInstruction: document.getElementById('puzzle-instruction'),
     puzzleTimer: document.getElementById('puzzle-timer'),
     optionsContainer: document.getElementById('options-container'),
     
-    // Feedback
     feedbackContainer: document.getElementById('feedback-container'),
     feedbackMessage: document.getElementById('feedback-message'),
     feedbackExplanation: document.getElementById('feedback-explanation'),
     
-    // Buttons
     startBtn: document.getElementById('start-btn'),
     continueBtn: document.getElementById('continue-btn'),
     playAgainBtn: document.getElementById('play-again-btn'),
     resetGameBtn: document.getElementById('reset-game-btn'),
     
-    // Ledger elements
     taxAmount: document.getElementById('tax-amount'),
     ledgerCoins: document.getElementById('ledger-coins'),
     ledgerSanity: document.getElementById('ledger-sanity'),
@@ -104,7 +91,6 @@ const elements = {
     buySanity5Btn: document.getElementById('buy-sanity-5-btn'),
     leaveLedgerBtn: document.getElementById('leave-ledger-btn'),
     
-    // Game over elements
     finalCoins: document.getElementById('final-coins'),
     finalSanity: document.getElementById('final-sanity'),
     finalMadness: document.getElementById('final-madness'),
@@ -112,7 +98,6 @@ const elements = {
     finalCycles: document.getElementById('final-cycles'),
     finalPuzzles: document.getElementById('final-puzzles'),
     
-    // Progress
     progressFill: document.getElementById('progress-fill')
 };
 
@@ -120,32 +105,22 @@ const elements = {
 class PatternQuest {
     constructor() {
         this.setupEventListeners();
+        this.renderOptions(); // FIX: Render options immediately
         this.updateUI();
     }
     
-    // ===== Event Listeners =====
     setupEventListeners() {
-        // Start button
         elements.startBtn.addEventListener('click', () => this.startGame());
-        
-        // Continue button
         elements.continueBtn.addEventListener('click', () => this.continuePuzzle());
-        
-        // Play again button
         elements.playAgainBtn.addEventListener('click', () => this.resetAndStart());
-        
-        // Reset game button
         elements.resetGameBtn.addEventListener('click', () => this.resetGame());
         
-        // Ledger buttons
         elements.leaveLedgerBtn.addEventListener('click', () => this.leaveLedger());
         elements.buySanityBtn.addEventListener('click', () => this.purchaseSanityScrap(1));
         elements.buySanity5Btn.addEventListener('click', () => this.purchaseSanityScrap(5));
         
-        // Keyboard support
         document.addEventListener('keydown', (e) => this.handleKeyDown(e));
         
-        // Option selection
         elements.optionsContainer.addEventListener('click', (e) => {
             const optionCard = e.target.closest('.option-card');
             if (optionCard && !optionCard.disabled) {
@@ -153,30 +128,28 @@ class PatternQuest {
             }
         });
         
-        // Puzzle container click (for starting puzzle)
+        // FIX: Click on puzzle container to start
         elements.puzzleContainer.addEventListener('click', () => {
-            if (!gameState.puzzleStarted && gameState.puzzleActive) {
+            if (!gameState.puzzleStarted && gameState.puzzleActive && gameState.gameActive) {
                 this.startPuzzle();
             }
         });
     }
     
     handleKeyDown(e) {
-        // Enter key to start puzzle or continue
         if (e.key === 'Enter') {
-            if (!gameState.puzzleStarted && gameState.puzzleActive) {
+            if (!gameState.puzzleStarted && gameState.puzzleActive && gameState.gameActive) {
                 e.preventDefault();
                 this.startPuzzle();
-            } else if (elements.continueBtn.style.display !== 'none') {
+            } else if (!elements.continueBtn.classList.contains('hidden')) {
                 e.preventDefault();
                 this.continuePuzzle();
             }
         }
         
-        // Number keys for options
-        if (gameState.puzzleStarted && !gameState.puzzleActive) {
+        if (gameState.puzzleStarted && !gameState.puzzleActive && gameState.gameActive) {
             const optionCards = document.querySelectorAll('.option-card:not(:disabled)');
-            if (e.key >= '1' && e.key <= '9' && optionCards.length > 0) {
+            if (e.key >= '1' && e.key <= '6' && optionCards.length > 0) {
                 const index = parseInt(e.key) - 1;
                 if (index < optionCards.length) {
                     this.selectOption(optionCards[index]);
@@ -184,160 +157,28 @@ class PatternQuest {
             }
         }
         
-        // Escape to leave ledger
         if (e.key === 'Escape' && !elements.ledgerScreen.classList.contains('hidden')) {
             this.leaveLedger();
         }
     }
     
-    // ===== Game Flow =====
+    // ===== GAME FLOW =====
     startGame() {
-        // Reset puzzle-specific state
         gameState.puzzleStartTime = null;
         gameState.puzzleStarted = false;
         gameState.puzzleActive = true;
         gameState.gameActive = true;
         
-        // Hide start screen, show game screen
         elements.startScreen.classList.add('hidden');
         elements.gameScreen.classList.remove('hidden');
         elements.ledgerScreen.classList.add('hidden');
         elements.gameOverScreen.classList.add('hidden');
         
-        // Start first puzzle
-        this.startPuzzle();
-        
-        // Update UI
         this.updateUI();
+        this.renderOptions(); // FIX: Ensure options are rendered
     }
     
     // ===== CORE FUNCTIONS =====
-    
-    // Start the puzzle timer
-    startPuzzle() {
-        if (gameState.puzzleStarted) return;
-        
-        gameState.puzzleStarted = true;
-        gameState.puzzleStartTime = Date.now();
-        gameState.puzzleActive = false; // Puzzle is now active for answering
-        
-        // Update UI
-        elements.puzzleContainer.classList.remove('puzzle-ready');
-        elements.puzzleContainer.classList.add('puzzle-started');
-        elements.puzzleInstruction.textContent = 'Select your answer';
-        
-        // Start timer display
-        this.updateTimer();
-        this.timerInterval = setInterval(() => this.updateTimer(), 1000);
-        
-        // Enable options
-        this.renderOptions();
-        
-        console.log('Puzzle started. Timer recording...');
-    }
-    
-    // Update timer display
-    updateTimer() {
-        if (!gameState.puzzleStarted || !gameState.puzzleStartTime) return;
-        
-        const elapsed = Math.floor((Date.now() - gameState.puzzleStartTime) / 1000);
-        elements.puzzleTimer.textContent = `Time: ${elapsed}s`;
-    }
-    
-    // Select an option
-    selectOption(optionCard) {
-        if (!gameState.puzzleStarted || gameState.puzzleActive) return;
-        
-        // Remove selection from all options
-        document.querySelectorAll('.option-card').forEach(card => {
-            card.classList.remove('selected');
-        });
-        
-        // Select this option
-        optionCard.classList.add('selected');
-        
-        // Check answer
-        this.checkAnswer(optionCard);
-    }
-    
-    // Check if answer is correct
-    checkAnswer(optionCard) {
-        if (!gameState.puzzleStarted || !gameState.puzzleStartTime) return;
-        
-        const selectedIndex = parseInt(optionCard.dataset.index);
-        const selectedValue = parseInt(optionCard.dataset.value);
-        const isCorrect = selectedValue === 2; // 1 + 1 = 2
-        
-        // Clear timer
-        if (this.timerInterval) {
-            clearInterval(this.timerInterval);
-            this.timerInterval = null;
-        }
-        
-        // Calculate response time
-        const responseTime = Date.now() - gameState.puzzleStartTime;
-        
-        // Process result
-        if (isCorrect) {
-            this.applyCorrectResult(responseTime);
-        } else {
-            this.applyWrongResult(responseTime);
-        }
-        
-        // Show feedback
-        this.showFeedback(isCorrect, responseTime);
-        
-        // Disable all options
-        document.querySelectorAll('.option-card').forEach(card => {
-            card.disabled = true;
-        });
-        
-        // Show continue button (for testing, but auto-advance would be here)
-        elements.continueBtn.style.display = 'block';
-        setTimeout(() => elements.continueBtn.focus(), 100);
-    }
-    
-    // Continue to next puzzle
-    continuePuzzle() {
-        elements.continueBtn.style.display = 'none';
-        elements.feedbackContainer.classList.add('hidden');
-        
-        // Check for level/cycle transitions
-        const puzzleNumber = gameState.currentPuzzle;
-        
-        if (puzzleNumber === CONFIG.puzzlesPerLevel) {
-            // Level 1 -> Level 2 transition
-            this.completeLevel();
-        } else if (puzzleNumber === CONFIG.puzzlesPerLevel * 2) {
-            // Level 2 -> Level 3 transition
-            this.completeLevel();
-        } else if (puzzleNumber === CONFIG.puzzlesPerCycle) {
-            // Cycle completion
-            this.completeCycle();
-            return; // Don't increment puzzle, cycle handles it
-        }
-        
-        // Increment puzzle number
-        gameState.currentPuzzle++;
-        
-        // Reset puzzle state
-        gameState.puzzleStarted = false;
-        gameState.puzzleStartTime = null;
-        gameState.puzzleActive = true;
-        
-        // Update UI
-        this.updateUI();
-        
-        // Start next puzzle
-        this.resetPuzzleDisplay();
-        this.startPuzzle();
-        
-        console.log(`Advanced to puzzle ${gameState.currentPuzzle}`);
-    }
-    
-    // ===== CORE FUNCTIONS (Required) =====
-    
-    // Start puzzle timer
     startPuzzle() {
         if (gameState.puzzleStarted) return;
         
@@ -352,58 +193,138 @@ class PatternQuest {
         this.updateTimer();
         this.timerInterval = setInterval(() => this.updateTimer(), 1000);
         
-        this.renderOptions();
+        console.log('Puzzle timer started');
     }
     
-    // Complete puzzle and process results
+    updateTimer() {
+        if (!gameState.puzzleStarted || !gameState.puzzleStartTime) {
+            elements.puzzleTimer.textContent = '';
+            return;
+        }
+        
+        const elapsed = Math.floor((Date.now() - gameState.puzzleStartTime) / 1000);
+        elements.puzzleTimer.textContent = `Time: ${elapsed}s`;
+    }
+    
+    selectOption(optionCard) {
+        if (!gameState.puzzleStarted || gameState.puzzleActive) return;
+        
+        document.querySelectorAll('.option-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        
+        optionCard.classList.add('selected');
+        this.checkAnswer(optionCard);
+    }
+    
+    checkAnswer(optionCard) {
+        if (!gameState.puzzleStarted || !gameState.puzzleStartTime) return;
+        
+        const selectedValue = parseInt(optionCard.dataset.value);
+        const isCorrect = selectedValue === 2;
+        
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+        
+        const responseTime = Date.now() - gameState.puzzleStartTime;
+        
+        if (isCorrect) {
+            this.applyCorrectResult(responseTime);
+        } else {
+            this.applyWrongResult(responseTime);
+        }
+        
+        this.showFeedback(isCorrect, responseTime);
+        
+        document.querySelectorAll('.option-card').forEach(card => {
+            card.disabled = true;
+        });
+        
+        // FIX: Show continue button
+        elements.continueBtn.classList.remove('hidden');
+        setTimeout(() => elements.continueBtn.focus(), 100);
+    }
+    
+    continuePuzzle() {
+        elements.continueBtn.classList.add('hidden');
+        elements.feedbackContainer.classList.add('hidden');
+        
+        const puzzleNumber = gameState.currentPuzzle;
+        
+        if (puzzleNumber === CONFIG.puzzlesPerLevel) {
+            this.completeLevel();
+        } else if (puzzleNumber === CONFIG.puzzlesPerLevel * 2) {
+            this.completeLevel();
+        } else if (puzzleNumber === CONFIG.puzzlesPerCycle) {
+            this.completeCycle();
+            return;
+        }
+        
+        gameState.currentPuzzle++;
+        
+        gameState.puzzleStarted = false;
+        gameState.puzzleStartTime = null;
+        gameState.puzzleActive = true;
+        
+        this.updateUI();
+        this.resetPuzzleDisplay();
+        this.renderOptions(); // FIX: Re-render options
+    }
+    
+    // ===== REQUIRED CORE FUNCTIONS =====
+    startPuzzle() {
+        if (gameState.puzzleStarted) return;
+        
+        gameState.puzzleStarted = true;
+        gameState.puzzleStartTime = Date.now();
+        gameState.puzzleActive = false;
+        
+        elements.puzzleContainer.classList.remove('puzzle-ready');
+        elements.puzzleContainer.classList.add('puzzle-started');
+        elements.puzzleInstruction.textContent = 'Select your answer';
+        
+        this.updateTimer();
+        this.timerInterval = setInterval(() => this.updateTimer(), 1000);
+    }
+    
     completePuzzle() {
-        // This is called when puzzle is answered
-        // The actual completion logic is in checkAnswer
+        // Puzzle completion logic
     }
     
-    // Apply correct answer result
     applyCorrectResult(responseTime) {
         gameState.correctAnswers++;
         gameState.totalResponseTime += responseTime;
         
-        // Award Peace Coins (simple reward for now)
-        const coinsEarned = 5; // Base reward
+        const coinsEarned = 5;
         gameState.peaceCoins += coinsEarned;
         gameState.coinsEarned += coinsEarned;
         
-        // Reduce Madness minimally
         gameState.madness = Math.max(0, gameState.madness - CONFIG.madness.correctReduction);
         
         console.log(`Correct! +${coinsEarned} Peace Coins, Madness -${CONFIG.madness.correctReduction}`);
     }
     
-    // Apply wrong answer result
     applyWrongResult(responseTime) {
         gameState.incorrectAnswers++;
         gameState.totalResponseTime += responseTime;
         
-        // Deduct Peace Coins
-        const coinsLost = 1; // Base penalty
+        const coinsLost = 1;
         gameState.peaceCoins = Math.max(0, gameState.peaceCoins - coinsLost);
         gameState.coinsLost += coinsLost;
         
-        // Increase Madness for wrong answer
         gameState.madness += CONFIG.madness.wrongAnswer;
-        
-        // Increase Madness from time
         this.applyMadnessFromTime(responseTime);
         
         console.log(`Wrong! -${coinsLost} Peace Coins, Madness +${CONFIG.madness.wrongAnswer + Math.floor(responseTime * CONFIG.madness.timeMultiplier / 1000)}`);
     }
     
-    // Apply Madness from elapsed time
     applyMadnessFromTime(elapsedTime) {
         const madnessIncrease = Math.floor(elapsedTime * CONFIG.madness.timeMultiplier / 1000);
         gameState.madness += madnessIncrease;
-        console.log(`Madness from time: +${madnessIncrease} (${elapsedTime}ms)`);
     }
     
-    // Apply Overlord tax
     applyOverlordTax() {
         const tax = this.calculateOverlordTax();
         gameState.peaceCoins = Math.max(0, gameState.peaceCoins - tax);
@@ -411,12 +332,10 @@ class PatternQuest {
         return tax;
     }
     
-    // Calculate Overlord tax
     calculateOverlordTax() {
         return CONFIG.baseTax + (CONFIG.taxIncreasePerCycle * (gameState.currentCycle - 1));
     }
     
-    // Purchase Sanity Scraps
     purchaseSanityScrap(amount) {
         const cost = amount === 1 ? 50 : 200;
         
@@ -433,48 +352,24 @@ class PatternQuest {
         return true;
     }
     
-    // Use Sanity Scrap to reduce Madness
-    useSanityScrap() {
-        if (gameState.sanityScraps <= 0) return false;
-        
-        gameState.sanityScraps--;
-        gameState.madness = Math.max(0, gameState.madness - CONFIG.madness.sanityScrapValue);
-        
-        this.updateLedgerUI();
-        return true;
-    }
-    
-    // Complete current level
     completeLevel() {
-        console.log(`Level ${gameState.currentLevel} completed!`);
-        
         gameState.currentLevel++;
         if (gameState.currentLevel > gameState.highestLevelReached) {
             gameState.highestLevelReached = gameState.currentLevel;
         }
         
-        // Show Sanity Ledger at level transitions
         this.enterSanityLedger();
     }
     
-    // Complete current cycle
     completeCycle() {
-        console.log(`Cycle ${gameState.currentCycle} completed!`);
-        
         gameState.currentCycle++;
         gameState.currentLevel = 1;
         gameState.currentPuzzle = 1;
         
-        // Increase base difficulty (for future implementation)
-        // Increase base Madness pressure (for future implementation)
-        
-        // Show Sanity Ledger at cycle transitions
         this.enterSanityLedger();
     }
     
-    // Reset game to initial state
     resetGame() {
-        // Show confirmation
         if (gameState.currentPuzzle > 1 || gameState.peaceCoins !== CONFIG.initialPeaceCoins) {
             if (confirm('Are you sure you want to reset the game? All progress will be lost.')) {
                 this.doReset();
@@ -485,7 +380,6 @@ class PatternQuest {
     }
     
     doReset() {
-        // Reset all state
         gameState.peaceCoins = CONFIG.initialPeaceCoins;
         gameState.sanityScraps = CONFIG.initialSanityScraps;
         gameState.madness = CONFIG.initialMadness;
@@ -503,32 +397,23 @@ class PatternQuest {
         gameState.highestLevelReached = CONFIG.initialLevel;
         gameState.gameActive = false;
         
-        // Clear timer
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
         }
         
-        // Update UI
         this.updateUI();
         
-        // Show start screen
         elements.startScreen.classList.remove('hidden');
         elements.gameScreen.classList.add('hidden');
         elements.ledgerScreen.classList.add('hidden');
         elements.gameOverScreen.classList.add('hidden');
         
-        // Reset puzzle display
         this.resetPuzzleDisplay();
-        
-        console.log('Game reset to initial state');
     }
     
-    // ===== UI Functions =====
-    
-    // Update all UI elements
+    // ===== UI FUNCTIONS =====
     updateUI() {
-        // Update header stats
         elements.peaceCoins.textContent = gameState.peaceCoins;
         elements.sanityScraps.textContent = gameState.sanityScraps;
         elements.madnessMeter.textContent = gameState.madness;
@@ -536,33 +421,27 @@ class PatternQuest {
         elements.currentLevel.textContent = gameState.currentLevel;
         elements.currentPuzzle.textContent = gameState.currentPuzzle;
         
-        // Update progress bar
         const maxPuzzle = CONFIG.puzzlesPerCycle;
         const progressPercent = ((gameState.currentPuzzle - 1) / maxPuzzle) * 100;
         elements.progressFill.style.width = progressPercent + '%';
     }
     
-    // Update ledger UI
     updateLedgerUI() {
         elements.ledgerCoins.textContent = gameState.peaceCoins;
         elements.ledgerSanity.textContent = gameState.sanityScraps;
         elements.ledgerMadness.textContent = gameState.madness;
         
-        // Update tax display
         const tax = this.calculateOverlordTax();
         elements.taxAmount.textContent = tax;
         
-        // Update purchase buttons
         elements.buySanityBtn.disabled = gameState.peaceCoins < 50;
         elements.buySanity5Btn.disabled = gameState.peaceCoins < 200;
     }
     
-    // Render options for current puzzle
     renderOptions() {
         elements.optionsContainer.innerHTML = '';
         
-        // For testing: 1 + 1 = ? with options
-        const options = [1, 2, 3, 4, 5, 6]; // 2 is correct
+        const options = [1, 2, 3, 4, 5, 6];
         
         options.forEach((option, index) => {
             const optionCard = document.createElement('button');
@@ -579,16 +458,13 @@ class PatternQuest {
             
             optionCard.appendChild(content);
             
-            // Add option label
             const label = document.createElement('span');
             label.className = 'option-label';
-            label.textContent = String.fromCharCode(65 + index); // A, B, C, etc.
+            label.textContent = String.fromCharCode(65 + index);
             optionCard.appendChild(label);
             
-            // Add click handler
             optionCard.addEventListener('click', () => this.selectOption(optionCard));
             
-            // Add keyboard support
             optionCard.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
@@ -598,9 +474,10 @@ class PatternQuest {
             
             elements.optionsContainer.appendChild(optionCard);
         });
+        
+        console.log('Options rendered');
     }
     
-    // Reset puzzle display
     resetPuzzleDisplay() {
         elements.puzzleContainer.classList.add('puzzle-ready');
         elements.puzzleContainer.classList.remove('puzzle-started');
@@ -608,10 +485,11 @@ class PatternQuest {
         elements.puzzleTimer.textContent = '';
         elements.optionsContainer.innerHTML = '';
         elements.feedbackContainer.classList.add('hidden');
-        elements.continueBtn.style.display = 'none';
+        elements.continueBtn.classList.add('hidden');
+        
+        this.renderOptions(); // FIX: Re-render options
     }
     
-    // Show feedback
     showFeedback(isCorrect, responseTime) {
         elements.feedbackContainer.classList.remove('hidden');
         
@@ -622,82 +500,54 @@ class PatternQuest {
         elements.feedbackExplanation.textContent = 
             `Answered in ${elapsedSeconds}s. ${isCorrect ? 'Well done!' : 'Try again.'}`;
         
-        // Highlight correct option
-        const options = document.querySelectorAll('.option-card');
-        options.forEach((option, index) => {
+        document.querySelectorAll('.option-card').forEach((option) => {
             const optionValue = parseInt(option.dataset.value);
             if (optionValue === 2) {
                 option.classList.add('correct');
-            } else if (!isCorrect && parseInt(option.dataset.value) !== 2) {
-                // Don't highlight wrong selection, only correct answer
             }
         });
     }
     
-    // Enter Sanity Ledger
     enterSanityLedger() {
-        // Apply tax
         const tax = this.applyOverlordTax();
-        
-        // Update UI
         this.updateLedgerUI();
         
-        // Hide game screen, show ledger
         elements.gameScreen.classList.add('hidden');
         elements.ledgerScreen.classList.remove('hidden');
-        
-        console.log(`Entered Sanity Ledger. Tax paid: ${tax} Peace Coins`);
     }
     
-    // Leave Sanity Ledger
     leaveLedger() {
-        // Check if we need to start a new cycle
         if (gameState.currentPuzzle > CONFIG.puzzlesPerCycle) {
-            // This shouldn't happen, but reset to new cycle
             gameState.currentCycle++;
             gameState.currentLevel = 1;
             gameState.currentPuzzle = 1;
         }
         
-        // Hide ledger, show game screen
         elements.ledgerScreen.classList.add('hidden');
         elements.gameScreen.classList.remove('hidden');
         
-        // Reset puzzle state for new level/cycle
         gameState.puzzleStarted = false;
         gameState.puzzleStartTime = null;
         gameState.puzzleActive = true;
         
-        // Update UI
         this.updateUI();
-        
-        // Reset and start next puzzle
         this.resetPuzzleDisplay();
         
-        // If we're at puzzle 1 of a new cycle, start immediately
         if (gameState.currentPuzzle === 1) {
-            // No need to press Enter for first puzzle after ledger
             this.startPuzzle();
         }
-        
-        console.log('Left Sanity Ledger');
     }
     
-    // Reset and start new game
     resetAndStart() {
         this.doReset();
         this.startGame();
     }
 }
 
-// ============================================
-// INITIALIZE GAME
-// ============================================
-
-// Start the game when DOM is loaded
+// ===== INITIALIZE =====
 document.addEventListener('DOMContentLoaded', () => {
     window.patternQuest = new PatternQuest();
-    console.log('Pattern Quest Core initialized!');
-    console.log('Press Enter to start puzzles. Test with 1+1=2.');
+    console.log('Pattern Quest Core initialized - FIXED VERSION');
+    console.log('Timer, options, and continue button should now be visible and working');
 });
     </script>
