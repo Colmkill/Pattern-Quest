@@ -1,1 +1,2336 @@
+  <script>
+// ============================================
+// PATTERN QUEST - Complete Browser Game
+// A puzzle adventure game with progressive difficulty
+// ============================================
 
+// ===== Game Configuration =====
+const CONFIG = {
+    initialCoins: 100,
+    levels: 8,
+    questionsPerLevel: 5,
+    maxQuestions: 40, // Total questions before game ends
+    
+    // Reward structure by difficulty level
+    rewards: {
+        1: { correct: 5, incorrect: -1 },
+        2: { correct: 7, incorrect: -2 },
+        3: { correct: 10, incorrect: -3 },
+        4: { correct: 12, incorrect: -4 },
+        5: { correct: 15, incorrect: -5 },
+        6: { correct: 20, incorrect: -7 },
+        7: { correct: 25, incorrect: -10 },
+        8: { correct: 30, incorrect: -15 }
+    },
+    
+    // Streak bonuses
+    streakBonuses: {
+        3: 5,
+        5: 10,
+        7: 15,
+        10: 25
+    },
+    
+    // Level names
+    levelNames: [
+        'Explorer',
+        'Pattern Finder', 
+        'Logic Builder',
+        'Puzzle Solver',
+        'Rule Hunter',
+        'Mastermind',
+        'Advanced',
+        'Grandmaster'
+    ],
+    
+    // Level thresholds for progression
+    levelThresholds: [0, 5, 10, 15, 20, 25, 30, 35]
+};
+
+// ===== Achievements =====
+const ACHIEVEMENTS = {
+    firstPattern: { id: 'first_pattern', name: 'First Pattern', icon: '🏆', unlocked: false },
+    fiveInARow: { id: 'five_in_a_row', name: 'Five in a Row', icon: '🔥', unlocked: false },
+    ruleHunter: { id: 'rule_hunter', name: 'Rule Hunter', icon: '🧩', unlocked: false },
+    rotationMaster: { id: 'rotation_master', name: 'Rotation Master', icon: '🔄', unlocked: false },
+    numberNinja: { id: 'number_ninja', name: 'Number Ninja', icon: '🔢', unlocked: false },
+    patternSpotter: { id: 'pattern_spotter', name: 'Pattern Spotter', icon: '👁', unlocked: false },
+    puzzleMaster: { id: 'puzzle_master', name: 'Puzzle Master', icon: '🧠', unlocked: false },
+    matrixMaster: { id: 'matrix_master', name: 'Matrix Master', icon: '🟨', unlocked: false },
+    speedDemon: { id: 'speed_demon', name: 'Speed Demon', icon: '⚡', unlocked: false },
+    perfectScore: { id: 'perfect_score', name: 'Perfect Score', icon: '⭐', unlocked: false }
+};
+
+// ===== Game State =====
+let gameState = {
+    currentLevel: 1,
+    coins: CONFIG.initialCoins,
+    streak: 0,
+    longestStreak: 0,
+    puzzlesSolved: 0,
+    highestLevelReached: 1,
+    currentQuestion: 0,
+    totalQuestions: 0,
+    gameActive: false,
+    settings: {
+        sound: true,
+        animations: true,
+        reducedMotion: false
+    }
+};
+
+// ===== Performance Tracking =====
+let performanceProfile = {
+    quantitative: { attempted: 0, correct: 0, avgTime: 0 },
+    spatial: { attempted: 0, correct: 0, avgTime: 0 },
+    logical: { attempted: 0, correct: 0, avgTime: 0 },
+    distribution: { attempted: 0, correct: 0, avgTime: 0 },
+    alternation: { attempted: 0, correct: 0, avgTime: 0 },
+    matrix: { attempted: 0, correct: 0, avgTime: 0 },
+    deduction: { attempted: 0, correct: 0, avgTime: 0 },
+    prediction: { attempted: 0, correct: 0, avgTime: 0 }
+};
+
+// ===== DOM Elements =====
+const elements = {
+    startScreen: document.getElementById('start-screen'),
+    gameScreen: document.getElementById('game-screen'),
+    gameOverScreen: document.getElementById('game-over-screen'),
+    puzzleContainer: document.getElementById('puzzle-container'),
+    optionsContainer: document.getElementById('options-container'),
+    feedbackContainer: document.getElementById('feedback-container'),
+    feedbackMessage: document.getElementById('feedback-message'),
+    feedbackExplanation: document.getElementById('feedback-explanation'),
+    continueBtn: document.getElementById('continue-btn'),
+    levelDisplay: document.getElementById('level-display'),
+    coinValue: document.getElementById('coin-value'),
+    streakValue: document.getElementById('streak-value'),
+    progressFill: document.getElementById('progress-fill'),
+    
+    // Buttons
+    startBtn: document.getElementById('start-btn'),
+    howToBtn: document.getElementById('how-to-btn'),
+    playAgainBtn: document.getElementById('play-again-btn'),
+    viewStatsBtn: document.getElementById('view-stats-btn'),
+    
+    // Modals
+    howToModal: document.getElementById('how-to-modal'),
+    statsModal: document.getElementById('stats-modal'),
+    settingsModal: document.getElementById('settings-modal'),
+    
+    // Modal Close Buttons
+    modalClose: document.getElementById('modal-close'),
+    statsModalClose: document.getElementById('stats-modal-close'),
+    settingsModalClose: document.getElementById('settings-modal-close'),
+    
+    // Settings
+    settingsBtn: document.getElementById('settings-btn'),
+    soundToggle: document.getElementById('sound-toggle'),
+    animationToggle: document.getElementById('animation-toggle'),
+    reducedMotionToggle: document.getElementById('reduced-motion'),
+    resetGameBtn: document.getElementById('reset-game-btn'),
+    
+    // Game Over Elements
+    finalCoins: document.getElementById('final-coins'),
+    finalPuzzles: document.getElementById('final-puzzles'),
+    finalLevel: document.getElementById('final-level'),
+    finalStreak: document.getElementById('final-streak'),
+    achievementsList: document.getElementById('achievements-list'),
+    
+    // Stats
+    statsGrid: document.getElementById('stats-grid'),
+    
+    // Toast Container
+    toastContainer: document.getElementById('toast-container')
+};
+
+// ============================================
+// PUZZLE GENERATION SYSTEM
+// ============================================
+
+// Shape definitions
+const SHAPES = {
+    circle: { symbol: '●', name: 'circle' },
+    square: { symbol: '■', name: 'square' },
+    triangle: { symbol: '▲', name: 'triangle' },
+    diamond: { symbol: '◆', name: 'diamond' },
+    star: { symbol: '★', name: 'star' },
+    heart: { symbol: '♥', name: 'heart' },
+    pentagon: { symbol: '⬠', name: 'pentagon' },
+    hexagon: { symbol: '⯀', name: 'hexagon' }
+};
+
+// Color definitions (using emoji as color indicators)
+const COLORS = {
+    red: { symbol: '🔴', name: 'red' },
+    blue: { symbol: '🔵', name: 'blue' },
+    green: { symbol: '🟢', name: 'green' },
+    yellow: { symbol: '🟡', name: 'yellow' },
+    purple: { symbol: '🟣', name: 'purple' },
+    orange: { symbol: '🟠', name: 'orange' },
+    white: { symbol: '⚪', name: 'white' },
+    black: { symbol: '⚫', name: 'black' }
+};
+
+// Direction definitions
+const DIRECTIONS = {
+    up: { symbol: '↑', name: 'up' },
+    down: { symbol: '↓', name: 'down' },
+    left: { symbol: '←', name: 'left' },
+    right: { symbol: '→', name: 'right' },
+    upRight: { symbol: '↗', name: 'up-right' },
+    upLeft: { symbol: '↖', name: 'up-left' },
+    downRight: { symbol: '↘', name: 'down-right' },
+    downLeft: { symbol: '↙', name: 'down-left' }
+};
+
+// ===== Puzzle Types =====
+const PUZZLE_TYPES = [
+    'quantitative',
+    'spatial', 
+    'logical',
+    'distribution',
+    'alternation',
+    'matrix',
+    'deduction',
+    'prediction'
+];
+
+// ===== Puzzle Generators =====
+
+class PuzzleGenerator {
+    constructor() {
+        this.puzzleIdCounter = 0;
+    }
+    
+    generatePuzzle(difficulty, type = null) {
+        this.puzzleIdCounter++;
+        
+        // If no type specified, choose based on difficulty
+        if (!type) {
+            type = this.chooseTypeByDifficulty(difficulty);
+        }
+        
+        const puzzleTypes = {
+            quantitative: () => this.generateQuantitativePuzzle(difficulty),
+            spatial: () => this.generateSpatialPuzzle(difficulty),
+            logical: () => this.generateLogicalPuzzle(difficulty),
+            distribution: () => this.generateDistributionPuzzle(difficulty),
+            alternation: () => this.generateAlternationPuzzle(difficulty),
+            matrix: () => this.generateMatrixPuzzle(difficulty),
+            deduction: () => this.generateDeductionPuzzle(difficulty),
+            prediction: () => this.generatePredictionPuzzle(difficulty)
+        };
+        
+        const generator = puzzleTypes[type];
+        if (generator) {
+            return generator();
+        }
+        
+        // Fallback to quantitative
+        return this.generateQuantitativePuzzle(difficulty);
+    }
+    
+    chooseTypeByDifficulty(difficulty) {
+        // Higher difficulty = more complex puzzle types
+        const typesByDifficulty = [
+            ['quantitative', 'spatial', 'alternation'],
+            ['quantitative', 'spatial', 'logical', 'alternation'],
+            ['quantitative', 'spatial', 'logical', 'distribution'],
+            ['spatial', 'logical', 'distribution', 'matrix'],
+            ['logical', 'distribution', 'matrix', 'deduction'],
+            ['distribution', 'matrix', 'deduction', 'prediction'],
+            ['matrix', 'deduction', 'prediction'],
+            ['matrix', 'deduction', 'prediction']
+        ];
+        
+        const availableTypes = typesByDifficulty[Math.min(difficulty - 1, typesByDifficulty.length - 1)];
+        return availableTypes[Math.floor(Math.random() * availableTypes.length)];
+    }
+    
+    // Generate a unique ID for the puzzle
+    getPuzzleId() {
+        return `puzzle_${Date.now()}_${this.puzzleIdCounter}`;
+    }
+    
+    // ===== QUANTITATIVE PUZZLES =====
+    generateQuantitativePuzzle(difficulty) {
+        const operations = ['+', '-', '*', '/'];
+        const baseNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        
+        let operation, sequence, ruleDescription;
+        
+        switch (difficulty) {
+            case 1:
+            case 2:
+                // Simple addition
+                operation = '+ ' + (Math.random() > 0.5 ? 1 : 2);
+                sequence = this.generateArithmeticSequence(4, operation);
+                ruleDescription = `Each number increases by ${operation.split(' ')[1]}`;
+                break;
+                
+            case 3:
+            case 4:
+                // More complex operations
+                operation = operations[Math.floor(Math.random() * operations.length)] + ' ' + 
+                           (Math.random() > 0.5 ? 2 : 3);
+                sequence = this.generateArithmeticSequence(4, operation);
+                ruleDescription = this.getOperationDescription(operation);
+                break;
+                
+            case 5:
+            case 6:
+                // Alternating operations
+                operation = 'alt+' + (Math.random() > 0.5 ? '1,2' : '2,3');
+                sequence = this.generateAlternatingSequence(4, operation);
+                ruleDescription = `Numbers alternate between increasing by 1 and 2`;
+                break;
+                
+            case 7:
+            case 8:
+                // Complex sequences
+                operation = Math.random() > 0.5 ? 
+                           'fibonacci' : 
+                           'square+' + (Math.random() > 0.5 ? 1 : 2);
+                sequence = this.generateComplexSequence(4, operation);
+                ruleDescription = operation === 'fibonacci' ? 
+                                 'Each number is the sum of the two preceding ones' :
+                                 'Each number is the square of its position plus an offset';
+                break;
+        }
+        
+        const questionIndex = sequence.length - 1;
+        const correctAnswer = sequence[questionIndex];
+        const options = this.generateOptions(correctAnswer, sequence, 'number');
+        
+        return {
+            id: this.getPuzzleId(),
+            type: 'quantitative',
+            difficulty: Math.min(difficulty, 8),
+            attributes: ['number', 'sequence'],
+            question: this.renderSequencePuzzle(sequence.slice(0, -1), '?'),
+            options: options,
+            correctAnswer: correctAnswer,
+            ruleType: ['quantitative'],
+            explanation: ruleDescription,
+            reward: CONFIG.rewards[Math.min(difficulty, 8)].correct,
+            penalty: CONFIG.rewards[Math.min(difficulty, 8)].incorrect
+        };
+    }
+    
+    generateArithmeticSequence(length, operation) {
+        const [op, val] = operation.split(' ');
+        const value = parseInt(val);
+        const start = Math.floor(Math.random() * 5) + 1;
+        
+        const sequence = [start];
+        for (let i = 1; i < length; i++) {
+            let next;
+            switch (op) {
+                case '+': next = sequence[i-1] + value; break;
+                case '-': next = sequence[i-1] - value; break;
+                case '*': next = sequence[i-1] * value; break;
+                case '/': next = Math.floor(sequence[i-1] / value); break;
+                default: next = sequence[i-1] + value;
+            }
+            sequence.push(next);
+        }
+        return sequence;
+    }
+    
+    generateAlternatingSequence(length, operation) {
+        const [,vals] = operation.split('alt+');
+        const [val1, val2] = vals.split(',').map(v => parseInt(v));
+        const start = Math.floor(Math.random() * 5) + 1;
+        
+        const sequence = [start];
+        for (let i = 1; i < length; i++) {
+            const value = i % 2 === 0 ? val1 : val2;
+            sequence.push(sequence[i-1] + value);
+        }
+        return sequence;
+    }
+    
+    generateComplexSequence(length, operation) {
+        if (operation === 'fibonacci') {
+            const start1 = Math.floor(Math.random() * 3) + 1;
+            const start2 = Math.floor(Math.random() * 3) + 1;
+            const sequence = [start1, start2];
+            for (let i = 2; i < length; i++) {
+                sequence.push(sequence[i-1] + sequence[i-2]);
+            }
+            return sequence;
+        } else {
+            const [,offset] = operation.split('+');
+            const offsetVal = parseInt(offset);
+            const sequence = [];
+            for (let i = 1; i <= length; i++) {
+                sequence.push(i * i + offsetVal);
+            }
+            return sequence;
+        }
+    }
+    
+    getOperationDescription(operation) {
+        const [op, val] = operation.split(' ');
+        const value = parseInt(val);
+        
+        switch (op) {
+            case '+': return `Each number increases by ${value}`;
+            case '-': return `Each number decreases by ${value}`;
+            case '*': return `Each number is multiplied by ${value}`;
+            case '/': return `Each number is divided by ${value}`;
+            default: return `Each number increases by ${value}`;
+        }
+    }
+    
+    // ===== SPATIAL PUZZLES =====
+    generateSpatialPuzzle(difficulty) {
+        const rotationAmounts = [45, 90, 135, 180, 270];
+        const flipTypes = ['horizontal', 'vertical', 'both'];
+        
+        let transformation, sequence, ruleDescription;
+        
+        switch (difficulty) {
+            case 1:
+            case 2:
+                // Simple rotation
+                transformation = 'rotate90';
+                sequence = this.generateRotationSequence(4, 90);
+                ruleDescription = 'Each shape rotates 90° clockwise';
+                break;
+                
+            case 3:
+            case 4:
+                // Flipping
+                transformation = 'flip' + flipTypes[Math.floor(Math.random() * flipTypes.length)];
+                sequence = this.generateFlipSequence(4, transformation);
+                ruleDescription = this.getFlipDescription(transformation);
+                break;
+                
+            case 5:
+            case 6:
+                // Combined rotation and flip
+                transformation = 'rotate' + rotationAmounts[Math.floor(Math.random() * rotationAmounts.length)] + 
+                                '+' + flipTypes[Math.floor(Math.random() * flipTypes.length)];
+                sequence = this.generateCombinedSequence(4, transformation);
+                ruleDescription = this.getCombinedDescription(transformation);
+                break;
+                
+            case 7:
+            case 8:
+                // Complex transformations
+                transformation = 'complex';
+                sequence = this.generateComplexSpatialSequence(4);
+                ruleDescription = 'Shapes rotate and change position in a pattern';
+                break;
+        }
+        
+        const shapes = Object.keys(SHAPES);
+        const shapeSequence = sequence.map(idx => shapes[idx % shapes.length]);
+        
+        const questionIndex = sequence.length - 1;
+        const correctAnswer = shapes[sequence[questionIndex] % shapes.length];
+        const options = this.generateShapeOptions(correctAnswer, shapeSequence.slice(0, -1));
+        
+        return {
+            id: this.getPuzzleId(),
+            type: 'spatial',
+            difficulty: Math.min(difficulty, 8),
+            attributes: ['shape', 'rotation', 'flip'],
+            question: this.renderSequencePuzzle(
+                shapeSequence.slice(0, -1).map(s => SHAPES[s].symbol), 
+                '?'
+            ),
+            options: options.map(opt => ({ value: opt, display: SHAPES[opt].symbol })),
+            correctAnswer: correctAnswer,
+            ruleType: ['spatial'],
+            explanation: ruleDescription,
+            reward: CONFIG.rewards[Math.min(difficulty, 8)].correct,
+            penalty: CONFIG.rewards[Math.min(difficulty, 8)].incorrect
+        };
+    }
+    
+    generateRotationSequence(length, degrees) {
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push(i); // Just using index, will map to shapes
+        }
+        return sequence;
+    }
+    
+    generateFlipSequence(length, flipType) {
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push(i);
+        }
+        return sequence;
+    }
+    
+    generateCombinedSequence(length, transformation) {
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push(i);
+        }
+        return sequence;
+    }
+    
+    generateComplexSpatialSequence(length) {
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push(i);
+        }
+        return sequence;
+    }
+    
+    getFlipDescription(transformation) {
+        if (transformation.includes('horizontal')) return 'Each shape is flipped horizontally';
+        if (transformation.includes('vertical')) return 'Each shape is flipped vertically';
+        return 'Each shape is flipped both horizontally and vertically';
+    }
+    
+    getCombinedDescription(transformation) {
+        const [rotate, flip] = transformation.split('+');
+        const degrees = rotate.replace('rotate', '');
+        const flipDesc = this.getFlipDescription('flip' + flip);
+        return `Each shape rotates ${degrees}° and ${flipDesc.toLowerCase()}`;
+    }
+    
+    // ===== LOGICAL PUZZLES =====
+    generateLogicalPuzzle(difficulty) {
+        const logicalOperations = ['AND', 'OR', 'XOR', 'NOT'];
+        const attributes = ['shape', 'color', 'size', 'fill'];
+        
+        let operation, rule, ruleDescription;
+        
+        switch (difficulty) {
+            case 1:
+            case 2:
+                operation = 'AND';
+                rule = { op: operation, attr1: 'shape', attr2: 'circle' };
+                ruleDescription = 'The shape must be a circle';
+                break;
+                
+            case 3:
+            case 4:
+                operation = logicalOperations[Math.floor(Math.random() * 2)]; // AND or OR
+                rule = { 
+                    op: operation, 
+                    attr1: attributes[Math.floor(Math.random() * attributes.length)],
+                    attr2: attributes[Math.floor(Math.random() * attributes.length)]
+                };
+                ruleDescription = this.getLogicalDescription(rule);
+                break;
+                
+            case 5:
+            case 6:
+                operation = logicalOperations[Math.floor(Math.random() * 3)]; // AND, OR, XOR
+                rule = { 
+                    op: operation,
+                    attr1: attributes[Math.floor(Math.random() * attributes.length)],
+                    attr2: attributes[Math.floor(Math.random() * attributes.length)],
+                    attr3: attributes[Math.floor(Math.random() * attributes.length)]
+                };
+                ruleDescription = this.getComplexLogicalDescription(rule);
+                break;
+                
+            case 7:
+            case 8:
+                operation = logicalOperations[Math.floor(Math.random() * logicalOperations.length)];
+                rule = { 
+                    op: operation,
+                    conditions: [
+                        { attr: attributes[0], value: 'circle' },
+                        { attr: attributes[1], value: 'red' },
+                        { attr: attributes[2], value: 'large' }
+                    ]
+                };
+                ruleDescription = this.getMultiConditionDescription(rule);
+                break;
+        }
+        
+        // Generate visual representation
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        // Create a 2x2 grid for the puzzle
+        const gridSize = difficulty <= 4 ? 2 : 3;
+        const grid = [];
+        
+        for (let i = 0; i < gridSize * gridSize; i++) {
+            grid.push({
+                shape: shapes[Math.floor(Math.random() * shapes.length)],
+                color: colors[Math.floor(Math.random() * colors.length)]
+            });
+        }
+        
+        // Determine correct answer based on rule
+        const correctAnswer = this.determineLogicalAnswer(grid, rule);
+        const options = this.generateGridOptions(correctAnswer, grid, gridSize);
+        
+        return {
+            id: this.getPuzzleId(),
+            type: 'logical',
+            difficulty: Math.min(difficulty, 8),
+            attributes: ['shape', 'color', 'logic'],
+            question: this.renderGridPuzzle(grid, gridSize, gridSize - 1), // Last cell is question
+            options: options,
+            correctAnswer: correctAnswer,
+            ruleType: ['logical'],
+            explanation: ruleDescription,
+            reward: CONFIG.rewards[Math.min(difficulty, 8)].correct,
+            penalty: CONFIG.rewards[Math.min(difficulty, 8)].incorrect
+        };
+    }
+    
+    determineLogicalAnswer(grid, rule) {
+        // Simple implementation - return a valid shape/color combination
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        return shapes[Math.floor(Math.random() * shapes.length)];
+    }
+    
+    getLogicalDescription(rule) {
+        return `The shape must be a ${rule.attr2}`;
+    }
+    
+    getComplexLogicalDescription(rule) {
+        return `The shape must be a ${rule.attr2} ${rule.op} ${rule.attr3}`;
+    }
+    
+    getMultiConditionDescription(rule) {
+        return 'The shape must satisfy multiple conditions';
+    }
+    
+    // ===== DISTRIBUTION PUZZLES =====
+    generateDistributionPuzzle(difficulty) {
+        const attributes = ['shape', 'color', 'size', 'border'];
+        const gridSize = difficulty <= 4 ? 3 : difficulty <= 6 ? 4 : 5;
+        
+        // Choose attributes to distribute
+        const numAttributes = Math.min(difficulty, 3);
+        const selectedAttributes = [];
+        for (let i = 0; i < numAttributes; i++) {
+            selectedAttributes.push(attributes[i]);
+        }
+        
+        // Create a grid with distribution rules
+        const grid = [];
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        for (let row = 0; row < gridSize; row++) {
+            const gridRow = [];
+            for (let col = 0; col < gridSize; col++) {
+                // Apply distribution rules
+                let shape, color;
+                
+                if (selectedAttributes.includes('shape')) {
+                    shape = shapes[(row + col) % shapes.length];
+                } else {
+                    shape = shapes[Math.floor(Math.random() * shapes.length)];
+                }
+                
+                if (selectedAttributes.includes('color')) {
+                    color = colors[row % colors.length];
+                } else {
+                    color = colors[Math.floor(Math.random() * colors.length)];
+                }
+                
+                gridRow.push({ shape, color });
+            }
+            grid.push(gridRow);
+        }
+        
+        // Remove one cell for the question
+        const questionRow = Math.floor(Math.random() * gridSize);
+        const questionCol = Math.floor(Math.random() * gridSize);
+        const correctAnswer = grid[questionRow][questionCol];
+        grid[questionRow][questionCol] = null;
+        
+        const ruleDescription = this.getDistributionDescription(selectedAttributes, gridSize);
+        
+        const options = this.generateDistributionOptions(correctAnswer, grid, gridSize);
+        
+        return {
+            id: this.getPuzzleId(),
+            type: 'distribution',
+            difficulty: Math.min(difficulty, 8),
+            attributes: selectedAttributes,
+            question: this.renderMatrixPuzzle(grid, questionRow, questionCol),
+            options: options,
+            correctAnswer: correctAnswer,
+            ruleType: ['distribution'],
+            explanation: ruleDescription,
+            reward: CONFIG.rewards[Math.min(difficulty, 8)].correct,
+            penalty: CONFIG.rewards[Math.min(difficulty, 8)].incorrect
+        };
+    }
+    
+    getDistributionDescription(attributes, gridSize) {
+        if (attributes.includes('shape') && attributes.includes('color')) {
+            return `Each row has unique shapes, each column has unique colors`;
+        } else if (attributes.includes('shape')) {
+            return `Each row contains all different shapes`;
+        } else if (attributes.includes('color')) {
+            return `Each column contains all different colors`;
+        }
+        return 'Items are distributed according to a pattern';
+    }
+    
+    // ===== ALTERNATION PUZZLES =====
+    generateAlternationPuzzle(difficulty) {
+        const patterns = ['shape', 'color', 'size', 'rotation'];
+        const patternType = patterns[Math.floor(Math.random() * patterns.length)];
+        
+        let sequence, ruleDescription;
+        
+        switch (difficulty) {
+            case 1:
+            case 2:
+                // Simple alternation
+                sequence = this.generateSimpleAlternation(5, patternType);
+                ruleDescription = `The ${patternType} alternates between two values`;
+                break;
+                
+            case 3:
+            case 4:
+                // Alternation with transformation
+                sequence = this.generateAlternationWithTransform(5, patternType);
+                ruleDescription = `The ${patternType} alternates and transforms`;
+                break;
+                
+            case 5:
+            case 6:
+                // Multiple alternations
+                sequence = this.generateMultipleAlternations(5, patternType);
+                ruleDescription = `Multiple ${patternType}s alternate in a pattern`;
+                break;
+                
+            case 7:
+            case 8:
+                // Complex alternation
+                sequence = this.generateComplexAlternation(5, patternType);
+                ruleDescription = 'Values alternate in a complex pattern';
+                break;
+        }
+        
+        const questionIndex = sequence.length - 1;
+        const correctAnswer = sequence[questionIndex];
+        const options = this.generateOptions(correctAnswer, sequence.slice(0, -1), patternType);
+        
+        return {
+            id: this.getPuzzleId(),
+            type: 'alternation',
+            difficulty: Math.min(difficulty, 8),
+            attributes: [patternType, 'alternation'],
+            question: this.renderSequencePuzzle(
+                sequence.slice(0, -1).map(item => 
+                    typeof item === 'string' ? item : (SHAPES[item.shape]?.symbol || item.shape)
+                ),
+                '?'
+            ),
+            options: options,
+            correctAnswer: correctAnswer,
+            ruleType: ['alternation'],
+            explanation: ruleDescription,
+            reward: CONFIG.rewards[Math.min(difficulty, 8)].correct,
+            penalty: CONFIG.rewards[Math.min(difficulty, 8)].incorrect
+        };
+    }
+    
+    generateSimpleAlternation(length, patternType) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            if (patternType === 'shape') {
+                sequence.push(shapes[i % 2]);
+            } else if (patternType === 'color') {
+                sequence.push(colors[i % 2]);
+            } else {
+                sequence.push(i % 2 === 0 ? 'large' : 'small');
+            }
+        }
+        return sequence;
+    }
+    
+    generateAlternationWithTransform(length, patternType) {
+        const shapes = Object.keys(SHAPES);
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push(shapes[(i * 2) % shapes.length]);
+        }
+        return sequence;
+    }
+    
+    generateMultipleAlternations(length, patternType) {
+        const shapes = Object.keys(SHAPES);
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push(shapes[(i + Math.floor(i/2)) % shapes.length]);
+        }
+        return sequence;
+    }
+    
+    generateComplexAlternation(length, patternType) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push({
+                shape: shapes[(i * 2) % shapes.length],
+                color: colors[(i * 3) % colors.length]
+            });
+        }
+        return sequence;
+    }
+    
+    // ===== MATRIX PUZZLES =====
+    generateMatrixPuzzle(difficulty) {
+        const gridSize = difficulty <= 3 ? 3 : difficulty <= 6 ? 4 : 5;
+        const matrixType = Math.random() > 0.5 ? '3x3' : '2x4';
+        
+        const rows = matrixType === '3x3' ? 3 : 2;
+        const cols = matrixType === '3x3' ? 3 : 4;
+        
+        // Create a matrix with a pattern
+        const matrix = [];
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        // Choose a rule for the matrix
+        const rule = this.chooseMatrixRule(difficulty);
+        
+        for (let row = 0; row < rows; row++) {
+            const matrixRow = [];
+            for (let col = 0; col < cols; col++) {
+                matrixRow.push(this.generateMatrixCell(row, col, rows, cols, rule, shapes, colors));
+            }
+            matrix.push(matrixRow);
+        }
+        
+        // Remove one cell for the question
+        const questionRow = Math.floor(Math.random() * rows);
+        const questionCol = Math.floor(Math.random() * cols);
+        const correctAnswer = matrix[questionRow][questionCol];
+        matrix[questionRow][questionCol] = null;
+        
+        const ruleDescription = this.getMatrixRuleDescription(rule);
+        
+        const options = this.generateMatrixOptions(correctAnswer, matrix, rows, cols);
+        
+        return {
+            id: this.getPuzzleId(),
+            type: 'matrix',
+            difficulty: Math.min(difficulty, 8),
+            attributes: ['matrix', 'pattern'],
+            question: this.renderMatrixPuzzle(matrix, questionRow, questionCol),
+            options: options,
+            correctAnswer: correctAnswer,
+            ruleType: ['spatial', 'logical'],
+            explanation: ruleDescription,
+            reward: CONFIG.rewards[Math.min(difficulty, 8)].correct,
+            penalty: CONFIG.rewards[Math.min(difficulty, 8)].incorrect
+        };
+    }
+    
+    chooseMatrixRule(difficulty) {
+        const rules = [
+            'row-shape',
+            'col-color',
+            'diagonal-shape',
+            'border-rotation',
+            'combination'
+        ];
+        return rules[Math.min(difficulty - 1, rules.length - 1)];
+    }
+    
+    generateMatrixCell(row, col, rows, cols, rule, shapes, colors) {
+        switch (rule) {
+            case 'row-shape':
+                return shapes[row % shapes.length];
+            case 'col-color':
+                return colors[col % colors.length];
+            case 'diagonal-shape':
+                return shapes[(row + col) % shapes.length];
+            case 'border-rotation':
+                return shapes[(row * cols + col) % shapes.length];
+            case 'combination':
+                return {
+                    shape: shapes[row % shapes.length],
+                    color: colors[col % colors.length]
+                };
+            default:
+                return shapes[Math.floor(Math.random() * shapes.length)];
+        }
+    }
+    
+    getMatrixRuleDescription(rule) {
+        switch (rule) {
+            case 'row-shape': return 'Each row contains the same shape';
+            case 'col-color': return 'Each column contains the same color';
+            case 'diagonal-shape': return 'Shapes follow a diagonal pattern';
+            case 'border-rotation': return 'Shapes rotate around the border';
+            case 'combination': return 'Each row has unique shapes, each column has unique colors';
+            default: return 'The matrix follows a hidden pattern';
+        }
+    }
+    
+    // ===== DEDUCTION PUZZLES =====
+    generateDeductionPuzzle(difficulty) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        let rule, ruleDescription, sequence;
+        
+        switch (difficulty) {
+            case 1:
+            case 2:
+                // Simple relationship
+                rule = { type: 'simple', relationship: 'same-shape' };
+                ruleDescription = 'Find the shape that matches the first one';
+                sequence = this.generateSimpleDeduction(shapes, 3);
+                break;
+                
+            case 3:
+            case 4:
+                // Transformation
+                rule = { type: 'transform', operation: 'rotate90' };
+                ruleDescription = 'The shape is rotated 90° clockwise';
+                sequence = this.generateTransformDeduction(shapes, 3);
+                break;
+                
+            case 5:
+            case 6:
+                // Multiple relationships
+                rule = { 
+                    type: 'multi', 
+                    relationships: ['same-shape', 'different-color']
+                };
+                ruleDescription = 'Find the shape that matches the first but has a different color';
+                sequence = this.generateMultiDeduction(shapes, colors, 4);
+                break;
+                
+            case 7:
+            case 8:
+                // Complex deduction
+                rule = { 
+                    type: 'complex',
+                    pattern: 'A relates to B as C relates to ?'
+                };
+                ruleDescription = 'A relates to B in the same way C relates to the answer';
+                sequence = this.generateComplexDeduction(shapes, colors, 4);
+                break;
+        }
+        
+        const questionIndex = sequence.length - 1;
+        const correctAnswer = sequence[questionIndex];
+        const options = this.generateDeductionOptions(correctAnswer, sequence.slice(0, -1));
+        
+        return {
+            id: this.getPuzzleId(),
+            type: 'deduction',
+            difficulty: Math.min(difficulty, 8),
+            attributes: ['shape', 'color', 'relationship'],
+            question: this.renderDeductionPuzzle(sequence.slice(0, -1)),
+            options: options,
+            correctAnswer: correctAnswer,
+            ruleType: ['logical', 'deduction'],
+            explanation: ruleDescription,
+            reward: CONFIG.rewards[Math.min(difficulty, 8)].correct,
+            penalty: CONFIG.rewards[Math.min(difficulty, 8)].incorrect
+        };
+    }
+    
+    generateSimpleDeduction(shapes, length) {
+        const baseShape = shapes[Math.floor(Math.random() * shapes.length)];
+        const sequence = [baseShape];
+        for (let i = 1; i < length; i++) {
+            sequence.push(shapes[Math.floor(Math.random() * shapes.length)]);
+        }
+        return sequence;
+    }
+    
+    generateTransformDeduction(shapes, length) {
+        const baseShape = shapes[Math.floor(Math.random() * shapes.length)];
+        const sequence = [baseShape];
+        for (let i = 1; i < length; i++) {
+            sequence.push(shapes[(shapes.indexOf(baseShape) + i) % shapes.length]);
+        }
+        return sequence;
+    }
+    
+    generateMultiDeduction(shapes, colors, length) {
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push({
+                shape: shapes[Math.floor(Math.random() * shapes.length)],
+                color: colors[Math.floor(Math.random() * colors.length)]
+            });
+        }
+        return sequence;
+    }
+    
+    generateComplexDeduction(shapes, colors, length) {
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push({
+                shape: shapes[i % shapes.length],
+                color: colors[(i * 2) % colors.length]
+            });
+        }
+        return sequence;
+    }
+    
+    // ===== PREDICTION PUZZLES =====
+    generatePredictionPuzzle(difficulty) {
+        const predictionTypes = ['shape', 'color', 'number', 'position'];
+        const predictionType = predictionTypes[Math.floor(Math.random() * predictionTypes.length)];
+        
+        let sequence, ruleDescription;
+        
+        switch (difficulty) {
+            case 1:
+            case 2:
+                sequence = this.generateSimplePrediction(4, predictionType);
+                ruleDescription = `Predict the next ${predictionType} in the sequence`;
+                break;
+                
+            case 3:
+            case 4:
+                sequence = this.generatePredictionWithPattern(4, predictionType);
+                ruleDescription = `Predict the next ${predictionType} based on the pattern`;
+                break;
+                
+            case 5:
+            case 6:
+                sequence = this.generateMultiAttributePrediction(4, predictionType);
+                ruleDescription = `Predict the next combination of attributes`;
+                break;
+                
+            case 7:
+            case 8:
+                sequence = this.generateComplexPrediction(4, predictionType);
+                ruleDescription = 'Predict the next item in the complex sequence';
+                break;
+        }
+        
+        const questionIndex = sequence.length - 1;
+        const correctAnswer = sequence[questionIndex];
+        const options = this.generateOptions(correctAnswer, sequence.slice(0, -1), predictionType);
+        
+        return {
+            id: this.getPuzzleId(),
+            type: 'prediction',
+            difficulty: Math.min(difficulty, 8),
+            attributes: [predictionType, 'sequence', 'prediction'],
+            question: this.renderSequencePuzzle(
+                sequence.slice(0, -1).map(item => 
+                    typeof item === 'string' ? item : (SHAPES[item.shape]?.symbol || item.shape)
+                ),
+                '?'
+            ),
+            options: options,
+            correctAnswer: correctAnswer,
+            ruleType: ['prediction'],
+            explanation: ruleDescription,
+            reward: CONFIG.rewards[Math.min(difficulty, 8)].correct,
+            penalty: CONFIG.rewards[Math.min(difficulty, 8)].incorrect
+        };
+    }
+    
+    generateSimplePrediction(length, predictionType) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            if (predictionType === 'shape') {
+                sequence.push(shapes[i % shapes.length]);
+            } else if (predictionType === 'color') {
+                sequence.push(colors[i % colors.length]);
+            } else if (predictionType === 'number') {
+                sequence.push(i + 1);
+            } else {
+                sequence.push(i % 4); // Position 0-3
+            }
+        }
+        return sequence;
+    }
+    
+    generatePredictionWithPattern(length, predictionType) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            if (predictionType === 'shape') {
+                sequence.push(shapes[(i * 2) % shapes.length]);
+            } else if (predictionType === 'color') {
+                sequence.push(colors[(i * 2) % colors.length]);
+            } else if (predictionType === 'number') {
+                sequence.push(i * 2);
+            } else {
+                sequence.push((i * 2) % 4);
+            }
+        }
+        return sequence;
+    }
+    
+    generateMultiAttributePrediction(length, predictionType) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push({
+                shape: shapes[(i * 2) % shapes.length],
+                color: colors[(i * 3) % colors.length]
+            });
+        }
+        return sequence;
+    }
+    
+    generateComplexPrediction(length, predictionType) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        
+        const sequence = [];
+        for (let i = 0; i < length; i++) {
+            sequence.push({
+                shape: shapes[(i * 2) % shapes.length],
+                color: colors[(i * 3) % colors.length],
+                number: numbers[(i * 5) % numbers.length]
+            });
+        }
+        return sequence;
+    }
+    
+    // ===== OPTION GENERATION =====
+    generateOptions(correctAnswer, sequence, type = 'auto') {
+        const options = [];
+        
+        // Add correct answer
+        options.push(correctAnswer);
+        
+        // Generate distractors
+        let distractors = [];
+        
+        if (type === 'number' || typeof correctAnswer === 'number') {
+            distractors = this.generateNumberDistractors(correctAnswer, sequence);
+        } else if (type === 'shape' || (typeof correctAnswer === 'string' && SHAPES[correctAnswer])) {
+            distractors = this.generateShapeDistractors(correctAnswer, sequence);
+        } else if (type === 'color' || (typeof correctAnswer === 'string' && COLORS[correctAnswer])) {
+            distractors = this.generateColorDistractors(correctAnswer, sequence);
+        } else if (typeof correctAnswer === 'object') {
+            distractors = this.generateObjectDistractors(correctAnswer, sequence);
+        } else {
+            distractors = this.generateGenericDistractors(correctAnswer, sequence);
+        }
+        
+        // Combine and shuffle
+        const allOptions = [correctAnswer, ...distractors];
+        this.shuffleArray(allOptions);
+        
+        // Map to option format
+        return allOptions.map((opt, index) => ({
+            id: index,
+            value: opt,
+            display: this.formatOptionDisplay(opt)
+        }));
+    }
+    
+    generateNumberDistractors(correct, sequence) {
+        const distractors = [];
+        const usedNumbers = new Set(sequence);
+        usedNumbers.add(correct);
+        
+        for (let i = 0; i < 4; i++) {
+            let distractor;
+            do {
+                distractor = Math.floor(Math.random() * 20) + 1;
+            } while (usedNumbers.has(distractor));
+            distractors.push(distractor);
+            usedNumbers.add(distractor);
+        }
+        return distractors;
+    }
+    
+    generateShapeDistractors(correct, sequence) {
+        const shapes = Object.keys(SHAPES);
+        const usedShapes = new Set(sequence);
+        usedShapes.add(correct);
+        
+        const distractors = [];
+        for (let i = 0; i < 4; i++) {
+            let distractor;
+            do {
+                distractor = shapes[Math.floor(Math.random() * shapes.length)];
+            } while (usedShapes.has(distractor));
+            distractors.push(distractor);
+            usedShapes.add(distractor);
+        }
+        return distractors;
+    }
+    
+    generateColorDistractors(correct, sequence) {
+        const colors = Object.keys(COLORS);
+        const usedColors = new Set(sequence);
+        usedColors.add(correct);
+        
+        const distractors = [];
+        for (let i = 0; i < 4; i++) {
+            let distractor;
+            do {
+                distractor = colors[Math.floor(Math.random() * colors.length)];
+            } while (usedColors.has(distractor));
+            distractors.push(distractor);
+            usedColors.add(distractor);
+        }
+        return distractors;
+    }
+    
+    generateObjectDistractors(correct, sequence) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        const usedShapes = new Set();
+        const usedColors = new Set();
+        
+        sequence.forEach(item => {
+            if (item && typeof item === 'object') {
+                usedShapes.add(item.shape);
+                usedColors.add(item.color);
+            }
+        });
+        usedShapes.add(correct.shape);
+        usedColors.add(correct.color);
+        
+        const distractors = [];
+        for (let i = 0; i < 4; i++) {
+            let shape, color;
+            
+            // Choose a shape that's not the correct one
+            do {
+                shape = shapes[Math.floor(Math.random() * shapes.length)];
+            } while (shape === correct.shape);
+            
+            // Choose a color that's not the correct one
+            do {
+                color = colors[Math.floor(Math.random() * colors.length)];
+            } while (color === correct.color);
+            
+            distractors.push({ shape, color });
+        }
+        return distractors;
+    }
+    
+    generateGenericDistractors(correct, sequence) {
+        const distractors = [];
+        const used = new Set(sequence);
+        used.add(correct);
+        
+        for (let i = 0; i < 4; i++) {
+            let distractor;
+            do {
+                distractor = Math.random().toString(36).substring(2, 8);
+            } while (used.has(distractor));
+            distractors.push(distractor);
+            used.add(distractor);
+        }
+        return distractors;
+    }
+    
+    formatOptionDisplay(option) {
+        if (typeof option === 'number') {
+            return option.toString();
+        } else if (typeof option === 'string') {
+            if (SHAPES[option]) {
+                return SHAPES[option].symbol;
+            } else if (COLORS[option]) {
+                return COLORS[option].symbol;
+            }
+            return option;
+        } else if (typeof option === 'object' && option !== null) {
+            if (option.shape && option.color) {
+                return SHAPES[option.shape]?.symbol + COLORS[option.color]?.symbol;
+            }
+            return JSON.stringify(option);
+        }
+        return String(option);
+    }
+    
+    generateShapeOptions(correctAnswer, sequence) {
+        const shapes = Object.keys(SHAPES);
+        const usedShapes = new Set(sequence);
+        usedShapes.add(correctAnswer);
+        
+        const options = [correctAnswer];
+        
+        for (let i = 0; i < 4; i++) {
+            let shape;
+            do {
+                shape = shapes[Math.floor(Math.random() * shapes.length)];
+            } while (usedShapes.has(shape));
+            options.push(shape);
+            usedShapes.add(shape);
+        }
+        
+        this.shuffleArray(options);
+        return options.map(opt => ({ value: opt, display: SHAPES[opt].symbol }));
+    }
+    
+    generateGridOptions(correctAnswer, grid, gridSize) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        const options = [{ shape: correctAnswer.shape, color: correctAnswer.color }];
+        
+        for (let i = 0; i < 4; i++) {
+            let shape, color;
+            
+            do {
+                shape = shapes[Math.floor(Math.random() * shapes.length)];
+            } while (shape === correctAnswer.shape);
+            
+            do {
+                color = colors[Math.floor(Math.random() * colors.length)];
+            } while (color === correctAnswer.color);
+            
+            options.push({ shape, color });
+        }
+        
+        this.shuffleArray(options);
+        return options.map(opt => ({
+            value: opt,
+            display: SHAPES[opt.shape].symbol + COLORS[opt.color].symbol
+        }));
+    }
+    
+    generateDistributionOptions(correctAnswer, grid, gridSize) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        const options = [{ shape: correctAnswer.shape, color: correctAnswer.color }];
+        
+        for (let i = 0; i < 4; i++) {
+            let shape, color;
+            
+            do {
+                shape = shapes[Math.floor(Math.random() * shapes.length)];
+            } while (shape === correctAnswer.shape);
+            
+            do {
+                color = colors[Math.floor(Math.random() * colors.length)];
+            } while (color === correctAnswer.color);
+            
+            options.push({ shape, color });
+        }
+        
+        this.shuffleArray(options);
+        return options.map(opt => ({
+            value: opt,
+            display: SHAPES[opt.shape].symbol + COLORS[opt.color].symbol
+        }));
+    }
+    
+    generateMatrixOptions(correctAnswer, matrix, rows, cols) {
+        const shapes = Object.keys(SHAPES);
+        const colors = Object.keys(COLORS);
+        
+        const options = [];
+        
+        if (typeof correctAnswer === 'string') {
+            // It's a shape
+            options.push(correctAnswer);
+            for (let i = 0; i < 4; i++) {
+                let shape;
+                do {
+                    shape = shapes[Math.floor(Math.random() * shapes.length)];
+                } while (shape === correctAnswer);
+                options.push(shape);
+            }
+            this.shuffleArray(options);
+            return options.map(opt => ({ value: opt, display: SHAPES[opt].symbol }));
+        } else if (typeof correctAnswer === 'object') {
+            // It's a shape/color combination
+            options.push(correctAnswer);
+            for (let i = 0; i < 4; i++) {
+                let shape, color;
+                do {
+                    shape = shapes[Math.floor(Math.random() * shapes.length)];
+                } while (shape === correctAnswer.shape);
+                
+                do {
+                    color = colors[Math.floor(Math.random() * colors.length)];
+                } while (color === correctAnswer.color);
+                
+                options.push({ shape, color });
+            }
+            this.shuffleArray(options);
+            return options.map(opt => ({
+                value: opt,
+                display: SHAPES[opt.shape].symbol + COLORS[opt.color].symbol
+            }));
+        }
+        
+        // Fallback
+        return this.generateOptions(correctAnswer, matrix.flat().filter(x => x !== null));
+    }
+    
+    generateDeductionOptions(correctAnswer, sequence) {
+        return this.generateOptions(correctAnswer, sequence);
+    }
+    
+    // ===== RENDERING =====
+    renderSequencePuzzle(sequence, question) {
+        const container = document.createElement('div');
+        container.className = 'sequence-container';
+        container.setAttribute('role', 'list');
+        
+        sequence.forEach((item, index) => {
+            const itemElement = document.createElement('div');
+            itemElement.className = 'sequence-item';
+            itemElement.setAttribute('role', 'listitem');
+            
+            if (typeof item === 'object' && item !== null) {
+                let display = '';
+                if (item.shape) display += SHAPES[item.shape]?.symbol || item.shape;
+                if (item.color) display += COLORS[item.color]?.symbol || item.color;
+                if (item.number !== undefined) display += item.number;
+                itemElement.textContent = display;
+            } else {
+                itemElement.textContent = typeof item === 'string' && SHAPES[item] ? SHAPES[item].symbol : item;
+            }
+            
+            container.appendChild(itemElement);
+        });
+        
+        // Add question mark
+        const questionElement = document.createElement('div');
+        questionElement.className = 'sequence-question';
+        questionElement.setAttribute('role', 'listitem');
+        questionElement.setAttribute('aria-label', 'Question');
+        questionElement.textContent = question;
+        container.appendChild(questionElement);
+        
+        return container;
+    }
+    
+    renderGridPuzzle(grid, gridSize, questionIndex) {
+        const container = document.createElement('div');
+        container.className = 'matrix-grid';
+        container.style.gridTemplateColumns = `repeat(${gridSize}, 1fr)`;
+        container.setAttribute('role', 'grid');
+        
+        grid.forEach((cell, index) => {
+            const cellElement = document.createElement('div');
+            cellElement.className = 'matrix-cell' + (cell === null ? ' matrix-question-cell' : '');
+            cellElement.setAttribute('role', 'gridcell');
+            
+            if (index === questionIndex) {
+                cellElement.className += ' matrix-question-cell';
+                cellElement.setAttribute('aria-label', 'Question');
+                cellElement.textContent = '?';
+            } else if (cell) {
+                if (typeof cell === 'object') {
+                    let display = '';
+                    if (cell.shape) display += SHAPES[cell.shape]?.symbol || cell.shape;
+                    if (cell.color) display += COLORS[cell.color]?.symbol || cell.color;
+                    cellElement.textContent = display;
+                } else {
+                    cellElement.textContent = typeof cell === 'string' && SHAPES[cell] ? SHAPES[cell].symbol : cell;
+                }
+            }
+            
+            container.appendChild(cellElement);
+        });
+        
+        return container;
+    }
+    
+    renderMatrixPuzzle(matrix, questionRow, questionCol) {
+        const container = document.createElement('div');
+        container.className = 'matrix-grid';
+        container.style.gridTemplateColumns = `repeat(${matrix[0].length}, 1fr)`;
+        container.setAttribute('role', 'grid');
+        
+        matrix.forEach((row, rowIndex) => {
+            row.forEach((cell, colIndex) => {
+                const cellElement = document.createElement('div');
+                cellElement.className = 'matrix-cell';
+                cellElement.setAttribute('role', 'gridcell');
+                
+                if (rowIndex === questionRow && colIndex === questionCol) {
+                    cellElement.className += ' matrix-question-cell';
+                    cellElement.setAttribute('aria-label', 'Question');
+                    cellElement.textContent = '?';
+                } else if (cell) {
+                    if (typeof cell === 'object') {
+                        let display = '';
+                        if (cell.shape) display += SHAPES[cell.shape]?.symbol || cell.shape;
+                        if (cell.color) display += COLORS[cell.color]?.symbol || cell.color;
+                        cellElement.textContent = display;
+                    } else {
+                        cellElement.textContent = typeof cell === 'string' && SHAPES[cell] ? SHAPES[cell].symbol : cell;
+                    }
+                }
+                
+                container.appendChild(cellElement);
+            });
+        });
+        
+        return container;
+    }
+    
+    renderDeductionPuzzle(sequence) {
+        const container = document.createElement('div');
+        container.className = 'sequence-container';
+        container.setAttribute('role', 'list');
+        
+        sequence.forEach((item, index) => {
+            const itemElement = document.createElement('div');
+            itemElement.className = 'sequence-item';
+            itemElement.setAttribute('role', 'listitem');
+            
+            if (typeof item === 'object' && item !== null) {
+                let display = '';
+                if (item.shape) display += SHAPES[item.shape]?.symbol || item.shape;
+                if (item.color) display += COLORS[item.color]?.symbol || item.color;
+                itemElement.textContent = display;
+            } else {
+                itemElement.textContent = typeof item === 'string' && SHAPES[item] ? SHAPES[item].symbol : item;
+            }
+            
+            container.appendChild(itemElement);
+        });
+        
+        // Add question mark
+        const questionElement = document.createElement('div');
+        questionElement.className = 'sequence-question';
+        questionElement.setAttribute('role', 'listitem');
+        questionElement.setAttribute('aria-label', 'Question');
+        questionElement.textContent = '?';
+        container.appendChild(questionElement);
+        
+        return container;
+    }
+    
+    // ===== UTILITY FUNCTIONS =====
+    shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+    
+    getRandomInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+}
+
+// Create puzzle generator instance
+const puzzleGenerator = new PuzzleGenerator();
+
+// ============================================
+// GAME ENGINE
+// ============================================
+
+class PatternQuest {
+    constructor() {
+        this.puzzleGenerator = puzzleGenerator;
+        this.currentPuzzle = null;
+        this.startTime = 0;
+        this.selectedOption = null;
+        this.achievements = { ...ACHIEVEMENTS };
+        
+        // Load saved state
+        this.loadGame();
+        
+        // Setup event listeners
+        this.setupEventListeners();
+        
+        // Update UI
+        this.updateUI();
+    }
+    
+    // ===== Event Listeners =====
+    setupEventListeners() {
+        // Start buttons
+        elements.startBtn.addEventListener('click', () => this.startGame());
+        elements.startFromModal.addEventListener('click', () => this.startGame());
+        
+        // How to play
+        elements.howToBtn.addEventListener('click', () => this.showHowToModal());
+        elements.modalClose.addEventListener('click', () => this.hideHowToModal());
+        
+        // Game buttons
+        elements.continueBtn.addEventListener('click', () => this.nextPuzzle());
+        elements.playAgainBtn.addEventListener('click', () => this.resetAndStart());
+        elements.viewStatsBtn.addEventListener('click', () => this.showStatsModal());
+        
+        // Stats modal
+        elements.statsModalClose.addEventListener('click', () => this.hideStatsModal());
+        elements.closeStatsBtn.addEventListener('click', () => this.hideStatsModal());
+        
+        // Settings
+        elements.settingsBtn.addEventListener('click', () => this.showSettingsModal());
+        elements.settingsModalClose.addEventListener('click', () => this.hideSettingsModal());
+        elements.closeSettingsBtn.addEventListener('click', () => this.hideSettingsModal());
+        elements.resetGameBtn.addEventListener('click', () => this.resetGame());
+        
+        // Settings toggles
+        elements.soundToggle.addEventListener('change', (e) => {
+            gameState.settings.sound = e.target.checked;
+            this.saveGame();
+        });
+        
+        elements.animationToggle.addEventListener('change', (e) => {
+            gameState.settings.animations = e.target.checked;
+            this.saveGame();
+        });
+        
+        elements.reducedMotionToggle.addEventListener('change', (e) => {
+            gameState.settings.reducedMotion = e.target.checked;
+            this.saveGame();
+        });
+        
+        // Close modals on outside click
+        window.addEventListener('click', (e) => {
+            if (e.target === elements.howToModal) this.hideHowToModal();
+            if (e.target === elements.statsModal) this.hideStatsModal();
+            if (e.target === elements.settingsModal) this.hideSettingsModal();
+        });
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (!gameState.gameActive) return;
+            
+            // Number keys for options
+            const optionCards = document.querySelectorAll('.option-card:not(:disabled)');
+            if (e.key >= '1' && e.key <= '9' && optionCards.length > 0) {
+                const index = parseInt(e.key) - 1;
+                if (index < optionCards.length) {
+                    this.selectOption(optionCards[index]);
+                }
+            }
+            
+            // Enter key to continue
+            if (e.key === 'Enter' && elements.continueBtn.style.display !== 'none') {
+                this.nextPuzzle();
+            }
+            
+            // Escape to close modals
+            if (e.key === 'Escape') {
+                this.hideAllModals();
+            }
+        });
+        
+        // Touch support for options
+        elements.optionsContainer.addEventListener('click', (e) => {
+            const optionCard = e.target.closest('.option-card');
+            if (optionCard && !optionCard.disabled) {
+                this.selectOption(optionCard);
+            }
+        });
+    }
+    
+    // ===== Game Flow =====
+    startGame() {
+        gameState.gameActive = true;
+        gameState.currentQuestion = 0;
+        gameState.totalQuestions = CONFIG.maxQuestions;
+        gameState.streak = 0;
+        
+        // Hide start screen, show game screen
+        elements.startScreen.classList.add('hidden');
+        elements.gameScreen.classList.remove('hidden');
+        elements.gameOverScreen.classList.add('hidden');
+        
+        // Start first puzzle
+        this.nextPuzzle();
+        
+        // Save game
+        this.saveGame();
+    }
+    
+    nextPuzzle() {
+        // Hide feedback
+        elements.feedbackContainer.style.display = 'none';
+        elements.continueBtn.style.display = 'none';
+        
+        // Check if game should end
+        if (gameState.currentQuestion >= gameState.totalQuestions) {
+            this.endGame();
+            return;
+        }
+        
+        // Update level based on progress
+        this.updateLevel();
+        
+        // Generate new puzzle
+        this.currentPuzzle = this.puzzleGenerator.generatePuzzle(
+            gameState.currentLevel,
+            null // Auto-select type based on difficulty
+        );
+        
+        // Record start time
+        this.startTime = Date.now();
+        
+        // Update UI
+        this.renderPuzzle();
+        this.updateUI();
+        
+        // Track performance
+        this.trackPerformance('generated', this.currentPuzzle.type);
+    }
+    
+    updateLevel() {
+        // Check if we should advance to next level
+        const questionsInCurrentLevel = CONFIG.questionsPerLevel * (gameState.currentLevel - 1);
+        const questionsInNextLevel = CONFIG.questionsPerLevel * gameState.currentLevel;
+        
+        if (gameState.currentQuestion >= questionsInNextLevel && 
+            gameState.currentLevel < CONFIG.levels) {
+            gameState.currentLevel++;
+            if (gameState.currentLevel > gameState.highestLevelReached) {
+                gameState.highestLevelReached = gameState.currentLevel;
+            }
+            
+            // Level up animation
+            this.showToast(`Level Up! ${CONFIG.levelNames[gameState.currentLevel - 1]}`, 'success');
+            
+            // Check achievements
+            this.checkAchievements();
+        }
+    }
+    
+    renderPuzzle() {
+        // Clear previous puzzle
+        elements.puzzleContainer.innerHTML = '';
+        elements.optionsContainer.innerHTML = '';
+        elements.feedbackContainer.style.display = 'none';
+        elements.continueBtn.style.display = 'none';
+        
+        // Render puzzle
+        if (this.currentPuzzle.question) {
+            if (this.currentPuzzle.question instanceof HTMLElement) {
+                elements.puzzleContainer.appendChild(this.currentPuzzle.question);
+            } else {
+                elements.puzzleContainer.innerHTML = this.currentPuzzle.question;
+            }
+        }
+        
+        // Render options
+        this.currentPuzzle.options.forEach((option, index) => {
+            const optionCard = document.createElement('button');
+            optionCard.className = 'option-card';
+            optionCard.dataset.value = option.value;
+            optionCard.dataset.index = index;
+            optionCard.setAttribute('role', 'option');
+            optionCard.setAttribute('aria-label', `Option ${index + 1}`);
+            optionCard.setAttribute('tabindex', '0');
+            
+            const content = document.createElement('div');
+            content.className = 'option-content';
+            
+            if (typeof option.display === 'string') {
+                content.innerHTML = option.display;
+            } else if (option.display instanceof HTMLElement) {
+                content.appendChild(option.display);
+            } else {
+                content.textContent = String(option.display);
+            }
+            
+            optionCard.appendChild(content);
+            
+            // Add option label
+            const label = document.createElement('span');
+            label.className = 'option-label';
+            label.textContent = String.fromCharCode(65 + index); // A, B, C, D, etc.
+            optionCard.appendChild(label);
+            
+            // Add click handler
+            optionCard.addEventListener('click', () => this.selectOption(optionCard));
+            
+            // Add keyboard support
+            optionCard.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.selectOption(optionCard);
+                }
+            });
+            
+            elements.optionsContainer.appendChild(optionCard);
+        });
+        
+        // Focus first option
+        setTimeout(() => {
+            const firstOption = elements.optionsContainer.querySelector('.option-card');
+            if (firstOption) firstOption.focus();
+        }, 100);
+    }
+    
+    selectOption(optionCard) {
+        if (!gameState.gameActive || !this.currentPuzzle) return;
+        
+        // Don't allow selection if already answered
+        if (elements.feedbackContainer.style.display !== 'none') return;
+        
+        // Remove selection from all options
+        document.querySelectorAll('.option-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        
+        // Select this option
+        optionCard.classList.add('selected');
+        this.selectedOption = optionCard;
+        
+        // Check answer after a brief delay
+        setTimeout(() => this.checkAnswer(optionCard), 100);
+    }
+    
+    checkAnswer(optionCard) {
+        if (!this.currentPuzzle) return;
+        
+        const selectedIndex = parseInt(optionCard.dataset.index);
+        const selectedValue = this.currentPuzzle.options[selectedIndex].value;
+        const isCorrect = selectedValue === this.currentPuzzle.correctAnswer;
+        
+        // Calculate response time
+        const responseTime = Date.now() - this.startTime;
+        
+        // Track performance
+        this.trackPerformance(
+            isCorrect ? 'correct' : 'incorrect',
+            this.currentPuzzle.type,
+            responseTime
+        );
+        
+        // Update streak
+        if (isCorrect) {
+            gameState.streak++;
+            if (gameState.streak > gameState.longestStreak) {
+                gameState.longestStreak = gameState.streak;
+            }
+            
+            // Check for streak bonuses
+            const streakBonus = this.checkStreakBonus();
+            
+            // Update coins
+            const reward = this.currentPuzzle.reward + (streakBonus || 0);
+            gameState.coins += reward;
+            
+            // Show feedback
+            this.showFeedback(true, reward, this.currentPuzzle.explanation, streakBonus);
+            
+            // Check achievements
+            this.checkAchievements();
+            
+        } else {
+            gameState.streak = 0;
+            
+            // Deduct coins (but don't go below 0)
+            const penalty = Math.max(0, Math.min(gameState.coins, Math.abs(this.currentPuzzle.penalty)));
+            gameState.coins = Math.max(0, gameState.coins - penalty);
+            
+            // Show feedback
+            this.showFeedback(false, -penalty, this.currentPuzzle.explanation);
+        }
+        
+        // Increment question counter
+        gameState.currentQuestion++;
+        gameState.puzzlesSolved++;
+        
+        // Update UI
+        this.updateUI();
+        
+        // Save game
+        this.saveGame();
+        
+        // Disable all options
+        document.querySelectorAll('.option-card').forEach(card => {
+            card.disabled = true;
+        });
+        
+        // Show continue button
+        elements.continueBtn.style.display = 'block';
+        setTimeout(() => elements.continueBtn.focus(), 100);
+    }
+    
+    checkStreakBonus() {
+        const streak = gameState.streak;
+        const bonus = CONFIG.streakBonuses[streak];
+        
+        if (bonus) {
+            this.showToast(`+${bonus} coins for ${streak} in a row!`, 'success');
+            return bonus;
+        }
+        return 0;
+    }
+    
+    showFeedback(isCorrect, coinChange, explanation, streakBonus = null) {
+        elements.feedbackContainer.style.display = 'block';
+        
+        // Set message
+        elements.feedbackMessage.textContent = isCorrect ? 'Nice! ✓' : 'Close! ✗';
+        elements.feedbackMessage.className = 'feedback-message ' + (isCorrect ? 'correct' : 'incorrect');
+        
+        // Set explanation
+        elements.feedbackExplanation.textContent = explanation;
+        
+        // Highlight correct option
+        const options = document.querySelectorAll('.option-card');
+        options.forEach((option, index) => {
+            const optionValue = this.currentPuzzle.options[index].value;
+            if (optionValue === this.currentPuzzle.correctAnswer) {
+                option.classList.add('correct');
+            } else if (!isCorrect && option === this.selectedOption) {
+                option.classList.add('incorrect');
+            }
+        });
+        
+        // Animate coin change
+        if (coinChange !== 0) {
+            this.animateCoinChange(coinChange, streakBonus);
+        }
+        
+        // Scroll to feedback
+        elements.feedbackContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    
+    animateCoinChange(change, streakBonus) {
+        if (!gameState.settings.animations || gameState.settings.reducedMotion) {
+            return;
+        }
+        
+        const coinElement = document.createElement('div');
+        coinElement.className = 'coin-animation ' + (change > 0 ? 'positive' : 'negative');
+        coinElement.textContent = (change > 0 ? '+' : '') + change + (streakBonus ? '+' + streakBonus : '');
+        
+        // Position near coin display
+        const coinDisplay = elements.coinDisplay;
+        const rect = coinDisplay.getBoundingClientRect();
+        
+        coinElement.style.left = (rect.left + window.scrollX + rect.width / 2) + 'px';
+        coinElement.style.top = (rect.top + window.scrollY + rect.height / 2) + 'px';
+        
+        document.body.appendChild(coinElement);
+        
+        // Remove after animation
+        setTimeout(() => {
+            coinElement.remove();
+        }, 600);
+    }
+    
+    endGame() {
+        gameState.gameActive = false;
+        
+        // Hide game screen, show game over screen
+        elements.gameScreen.classList.add('hidden');
+        elements.gameOverScreen.classList.remove('hidden');
+        
+        // Update final stats
+        elements.finalCoins.textContent = gameState.coins;
+        elements.finalPuzzles.textContent = gameState.puzzlesSolved;
+        elements.finalLevel.textContent = gameState.highestLevelReached;
+        elements.finalStreak.textContent = gameState.longestStreak;
+        
+        // Show achievements
+        this.renderAchievements();
+        
+        // Save final game state
+        this.saveGame();
+        
+        // Check for perfect score achievement
+        if (gameState.coins >= CONFIG.initialCoins + 
+            Object.values(CONFIG.rewards).reduce((sum, r) => sum + r.correct, 0)) {
+            this.unlockAchievement('perfectScore');
+        }
+    }
+    
+    // ===== UI Updates =====
+    updateUI() {
+        // Update level display
+        elements.levelDisplay.textContent = gameState.currentLevel;
+        
+        // Update coin display
+        elements.coinValue.textContent = gameState.coins;
+        
+        // Update streak display
+        elements.streakValue.textContent = gameState.streak;
+        
+        // Update progress bar
+        const progressPercent = (gameState.currentQuestion / gameState.totalQuestions) * 100;
+        elements.progressFill.style.width = progressPercent + '%';
+    }
+    
+    // ===== Achievements =====
+    checkAchievements() {
+        // First Pattern
+        if (gameState.puzzlesSolved >= 1 && !this.achievements.firstPattern.unlocked) {
+            this.unlockAchievement('firstPattern');
+        }
+        
+        // Five in a Row
+        if (gameState.streak >= 5 && !this.achievements.fiveInARow.unlocked) {
+            this.unlockAchievement('fiveInARow');
+        }
+        
+        // Rule Hunter (reach level 3)
+        if (gameState.highestLevelReached >= 3 && !this.achievements.ruleHunter.unlocked) {
+            this.unlockAchievement('ruleHunter');
+        }
+        
+        // Rotation Master (solve spatial puzzles)
+        if (performanceProfile.spatial.correct >= 3 && !this.achievements.rotationMaster.unlocked) {
+            this.unlockAchievement('rotationMaster');
+        }
+        
+        // Number Ninja (solve quantitative puzzles)
+        if (performanceProfile.quantitative.correct >= 3 && !this.achievements.numberNinja.unlocked) {
+            this.unlockAchievement('numberNinja');
+        }
+        
+        // Pattern Spotter (solve 10 puzzles)
+        if (gameState.puzzlesSolved >= 10 && !this.achievements.patternSpotter.unlocked) {
+            this.unlockAchievement('patternSpotter');
+        }
+        
+        // Puzzle Master (reach level 5)
+        if (gameState.highestLevelReached >= 5 && !this.achievements.puzzleMaster.unlocked) {
+            this.unlockAchievement('puzzleMaster');
+        }
+        
+        // Matrix Master (solve matrix puzzles)
+        if (performanceProfile.matrix.correct >= 3 && !this.achievements.matrixMaster.unlocked) {
+            this.unlockAchievement('matrixMaster');
+        }
+        
+        // Speed Demon (average response time < 5 seconds)
+        if (performanceProfile.quantitative.avgTime > 0 && 
+            performanceProfile.quantitative.avgTime < 5000 && 
+            performanceProfile.quantitative.correct >= 3 &&
+            !this.achievements.speedDemon.unlocked) {
+            this.unlockAchievement('speedDemon');
+        }
+    }
+    
+    unlockAchievement(achievementId) {
+        if (this.achievements[achievementId]) {
+            this.achievements[achievementId].unlocked = true;
+            this.showToast(`${this.achievements[achievementId].icon} ${this.achievements[achievementId].name} Unlocked!`, 'success');
+            this.saveGame();
+        }
+    }
+    
+    renderAchievements() {
+        elements.achievementsList.innerHTML = '';
+        
+        Object.values(this.achievements).forEach(achievement => {
+            if (achievement.unlocked) {
+                const badge = document.createElement('div');
+                badge.className = 'achievement-badge unlocked';
+                badge.innerHTML = `<span aria-hidden="true">${achievement.icon}</span> <span>${achievement.name}</span>`;
+                elements.achievementsList.appendChild(badge);
+            }
+        });
+    }
+    
+    // ===== Performance Tracking =====
+    trackPerformance(type, puzzleType = null, responseTime = 0) {
+        switch (type) {
+            case 'generated':
+                // Just track that we generated a puzzle of this type
+                break;
+                
+            case 'correct':
+                if (puzzleType && performanceProfile[puzzleType]) {
+                    performanceProfile[puzzleType].attempted++;
+                    performanceProfile[puzzleType].correct++;
+                    
+                    // Update average time
+                    const currentAvg = performanceProfile[puzzleType].avgTime;
+                    const currentCount = performanceProfile[puzzleType].correct - 1;
+                    performanceProfile[puzzleType].avgTime = currentCount > 0 ?
+                        (currentAvg * currentCount + responseTime) / performanceProfile[puzzleType].correct :
+                        responseTime;
+                }
+                break;
+                
+            case 'incorrect':
+                if (puzzleType && performanceProfile[puzzleType]) {
+                    performanceProfile[puzzleType].attempted++;
+                }
+                break;
+        }
+        
+        this.saveGame();
+    }
+    
+    // ===== Modals =====
+    showHowToModal() {
+        elements.howToModal.classList.add('active');
+        elements.howToModal.setAttribute('aria-hidden', 'false');
+    }
+    
+    hideHowToModal() {
+        elements.howToModal.classList.remove('active');
+        elements.howToModal.setAttribute('aria-hidden', 'true');
+    }
+    
+    showStatsModal() {
+        this.renderStats();
+        elements.statsModal.classList.add('active');
+        elements.statsModal.setAttribute('aria-hidden', 'false');
+    }
+    
+    hideStatsModal() {
+        elements.statsModal.classList.remove('active');
+        elements.statsModal.setAttribute('aria-hidden', 'true');
+    }
+    
+    renderStats() {
+        elements.statsGrid.innerHTML = '';
+        
+        // Basic stats
+        const stats = [
+            { label: 'Total Coins', value: gameState.coins, icon: '🪙' },
+            { label: 'Puzzles Solved', value: gameState.puzzlesSolved, icon: '🧩' },
+            { label: 'Highest Level', value: gameState.highestLevelReached, icon: '🏆' },
+            { label: 'Longest Streak', value: gameState.longestStreak, icon: '🔥' },
+            { label: 'Current Streak', value: gameState.streak, icon: '⚡' }
+        ];
+        
+        stats.forEach(stat => {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            card.innerHTML = `
+                <h4>${stat.label}</h4>
+                <div class="stat-value">${stat.icon} ${stat.value}</div>
+            `;
+            elements.statsGrid.appendChild(card);
+        });
+        
+        // Performance by category
+        Object.entries(performanceProfile).forEach(([category, data]) => {
+            if (data.attempted > 0) {
+                const accuracy = Math.round((data.correct / data.attempted) * 100);
+                const avgTime = data.avgTime > 0 ? Math.round(data.avgTime / 1000) + 's' : 'N/A';
+                
+                const card = document.createElement('div');
+                card.className = 'stat-card';
+                card.innerHTML = `
+                    <h4>${category}</h4>
+                    <div class="stat-value">${data.correct}/${data.attempted} (${accuracy}%)</div>
+                    <small>Avg: ${avgTime}</small>
+                `;
+                elements.statsGrid.appendChild(card);
+            }
+        });
+    }
+    
+    showSettingsModal() {
+        // Update toggle states
+        elements.soundToggle.checked = gameState.settings.sound;
+        elements.animationToggle.checked = gameState.settings.animations;
+        elements.reducedMotionToggle.checked = gameState.settings.reducedMotion;
+        
+        elements.settingsModal.classList.add('active');
+        elements.settingsModal.setAttribute('aria-hidden', 'false');
+    }
+    
+    hideSettingsModal() {
+        elements.settingsModal.classList.remove('active');
+        elements.settingsModal.setAttribute('aria-hidden', 'true');
+    }
+    
+    hideAllModals() {
+        this.hideHowToModal();
+        this.hideStatsModal();
+        this.hideSettingsModal();
+    }
+    
+    showToast(message, type = 'info') {
+        if (!gameState.settings.animations || gameState.settings.reducedMotion) {
+            // Just show a simple message
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + type;
+            toast.textContent = message;
+            elements.toastContainer.appendChild(toast);
+            
+            setTimeout(() => toast.remove(), 3000);
+            return;
+        }
+        
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + type;
+        toast.textContent = message;
+        elements.toastContainer.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 2000);
+    }
+    
+    // ===== Game Reset =====
+    resetAndStart() {
+        this.resetGame();
+        this.startGame();
+    }
+    
+    resetGame() {
+        // Show confirmation
+        if (gameState.puzzlesSolved > 0) {
+            if (confirm('Are you sure you want to reset your progress? All data will be lost.')) {
+                this.doReset();
+            }
+        } else {
+            this.doReset();
+        }
+    }
+    
+    doReset() {
+        // Reset game state
+        gameState = {
+            currentLevel: 1,
+            coins: CONFIG.initialCoins,
+            streak: 0,
+            longestStreak: 0,
+            puzzlesSolved: 0,
+            highestLevelReached: 1,
+            currentQuestion: 0,
+            totalQuestions: 0,
+            gameActive: false,
+            settings: {
+                sound: true,
+                animations: true,
+                reducedMotion: false
+            }
+        };
+        
+        // Reset performance profile
+        performanceProfile = {
+            quantitative: { attempted: 0, correct: 0, avgTime: 0 },
+            spatial: { attempted: 0, correct: 0, avgTime: 0 },
+            logical: { attempted: 0, correct: 0, avgTime: 0 },
+            distribution: { attempted: 0, correct: 0, avgTime: 0 },
+            alternation: { attempted: 0, correct: 0, avgTime: 0 },
+            matrix: { attempted: 0, correct: 0, avgTime: 0 },
+            deduction: { attempted: 0, correct: 0, avgTime: 0 },
+            prediction: { attempted: 0, correct: 0, avgTime: 0 }
+        };
+        
+        // Reset achievements
+        this.achievements = { ...ACHIEVEMENTS };
+        Object.keys(this.achievements).forEach(key => {
+            this.achievements[key].unlocked = false;
+        });
+        
+        // Clear localStorage
+        localStorage.removeItem('patternQuestGame');
+        localStorage.removeItem('patternQuestPerformance');
+        localStorage.removeItem('patternQuestAchievements');
+        
+        // Update UI
+        this.updateUI();
+        
+        // Show start screen
+        elements.startScreen.classList.remove('hidden');
+        elements.gameScreen.classList.add('hidden');
+        elements.gameOverScreen.classList.add('hidden');
+        
+        // Hide all modals
+        this.hideAllModals();
+    }
+    
+    // ===== Save/Load Game =====
+    saveGame() {
+        try {
+            // Save game state
+            const saveData = {
+                gameState: { ...gameState, gameActive: false }, // Don't save active state
+                performanceProfile,
+                achievements: Object.fromEntries(
+                    Object.entries(this.achievements).map(([key, val]) => [key, val.unlocked])
+                ),
+                timestamp: Date.now()
+            };
+            
+            localStorage.setItem('patternQuestGame', JSON.stringify(saveData));
+        } catch (e) {
+            console.error('Error saving game:', e);
+        }
+    }
+    
+    loadGame() {
+        try {
+            const savedData = localStorage.getItem('patternQuestGame');
+            if (savedData) {
+                const data = JSON.parse(savedData);
+                
+                // Restore game state
+                if (data.gameState) {
+                    gameState = { ...gameState, ...data.gameState };
+                }
+                
+                // Restore performance profile
+                if (data.performanceProfile) {
+                    Object.assign(performanceProfile, data.performanceProfile);
+                }
+                
+                // Restore achievements
+                if (data.achievements) {
+                    Object.keys(data.achievements).forEach(key => {
+                        if (this.achievements[key]) {
+                            this.achievements[key].unlocked = data.achievements[key];
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('Error loading game:', e);
+        }
+    }
+}
+
+// ============================================
+// INITIALIZE GAME
+// ============================================
+
+// Start the game when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    // Initialize game
+    window.patternQuest = new PatternQuest();
+    
+    // Add CSS for animations
+    const animationStyles = `
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+    `;
+    
+    const styleElement = document.createElement('style');
+    styleElement.textContent = animationStyles;
+    document.head.appendChild(styleElement);
+    
+    console.log('Pattern Quest initialized!');
+});
+
+// Add keyboard support for accessibility
+document.addEventListener('keydown', (e) => {
+    // Escape to close modals
+    if (e.key === 'Escape') {
+        const activeModals = document.querySelectorAll('.modal.active');
+        activeModals.forEach(modal => {
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+        });
+    }
+});
+    </script>
