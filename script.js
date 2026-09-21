@@ -14,7 +14,7 @@ const CONFIG = {
     initialLevel: 1,
     initialPuzzle: 1,
     
-    puzzlesPerLevel: 100,
+    puzzlesPerLevel: 10,
     puzzlesPerCycle: 500,
     
     madness: {
