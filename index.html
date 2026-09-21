@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pattern Quest - A Puzzle Adventure</title>
- 
+    <title>Pattern Quest - Core Game State</title>
+   
 </head>
 <body>
     <!-- Skip link for accessibility -->
@@ -22,15 +22,33 @@
                 </h1>
             </div>
             <div class="header-center">
-                <div class="level-indicator">
-                    <span class="level-label">Level</span>
-                    <span class="level-value" id="level-display">1</span>
+                <div class="stats-header">
+                    <div class="stat-badge coins-badge">
+                        <span class="label">🪙</span>
+                        <span class="value" id="peace-coins">100</span>
+                    </div>
+                    <div class="stat-badge sanity-badge">
+                        <span class="label">🧘</span>
+                        <span class="value" id="sanity-scraps">0</span>
+                    </div>
+                    <div class="stat-badge madness-badge">
+                        <span class="label">😵</span>
+                        <span class="value" id="madness-meter">0</span>
+                    </div>
                 </div>
             </div>
             <div class="header-right">
-                <div class="coin-display" id="coin-display">
-                    <span class="coin-icon" aria-hidden="true">🪙</span>
-                    <span class="coin-value" id="coin-value">100</span>
+                <div class="level-indicator">
+                    <span class="level-label">Cycle</span>
+                    <span class="level-value" id="current-cycle">1</span>
+                </div>
+                <div class="level-indicator">
+                    <span class="level-label">Lvl</span>
+                    <span class="level-value" id="current-level">1</span>
+                </div>
+                <div class="level-indicator">
+                    <span class="level-label">Puz</span>
+                    <span class="level-value" id="current-puzzle">1</span>
                 </div>
             </div>
         </header>
@@ -39,10 +57,6 @@
         <div class="progress-container">
             <div class="progress-bar">
                 <div class="progress-fill" id="progress-fill"></div>
-            </div>
-            <div class="streak-display" id="streak-display">
-                <span class="streak-icon" aria-hidden="true">🔥</span>
-                <span class="streak-value" id="streak-value">0</span>
             </div>
         </div>
 
@@ -55,67 +69,24 @@
                     <h2 class="start-title">Welcome to Pattern Quest!</h2>
                     <p class="start-subtitle">A visual puzzle adventure</p>
                     <div class="start-description">
-                        <p>Solve increasingly challenging puzzles to earn coins and unlock new levels.</p>
-                        <p>Discover patterns, crack codes, and become a Puzzle Master!</p>
+                        <p>Solve puzzles, earn Peace Coins, and manage your Sanity.</p>
+                        <p>Press Enter to start each puzzle and begin your journey!</p>
                     </div>
                     <button class="btn btn-primary btn-large" id="start-btn" aria-label="Start game">
                         <span class="btn-icon" aria-hidden="true">▶</span>
                         <span class="btn-text">Start Adventure</span>
                     </button>
-                    <button class="btn btn-secondary" id="how-to-btn" aria-label="How to play">How to Play</button>
                 </div>
             </section>
-
-            <!-- How to Play Modal -->
-            <div id="how-to-modal" class="modal" role="dialog" aria-labelledby="how-to-title" aria-modal="true">
-                <div class="modal-content">
-                    <button class="modal-close" id="modal-close" aria-label="Close modal">&times;</button>
-                    <h2 id="how-to-title">How to Play</h2>
-                    <div class="instructions">
-                        <div class="instruction-item">
-                            <span class="instruction-icon" aria-hidden="true">🎯</span>
-                            <div class="instruction-text">
-                                <h3>Objective</h3>
-                                <p>Solve visual puzzles by identifying patterns, rules, and relationships.</p>
-                            </div>
-                        </div>
-                        <div class="instruction-item">
-                            <span class="instruction-icon" aria-hidden="true">🪙</span>
-                            <div class="instruction-text">
-                                <h3>Coins</h3>
-                                <p>Start with 100 coins. Earn more for correct answers, lose some for mistakes.</p>
-                            </div>
-                        </div>
-                        <div class="instruction-item">
-                            <span class="instruction-icon" aria-hidden="true">📈</span>
-                            <div class="instruction-text">
-                                <h3>Difficulty</h3>
-                                <p>Puzzles get harder as you advance. Higher levels = bigger rewards!</p>
-                            </div>
-                        </div>
-                        <div class="instruction-item">
-                            <span class="instruction-icon" aria-hidden="true">🔥</span>
-                            <div class="instruction-text">
-                                <h3>Streaks</h3>
-                                <p>Get 3+ correct in a row for bonus coins!</p>
-                            </div>
-                        </div>
-                        <div class="instruction-item">
-                            <span class="instruction-icon" aria-hidden="true">🏆</span>
-                            <div class="instruction-text">
-                                <h3>Achievements</h3>
-                                <p>Unlock achievements as you master different puzzle types!</p>
-                            </div>
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" id="start-from-modal" aria-label="Start game">Start Game</button>
-                </div>
-            </div>
 
             <!-- Game Screen -->
             <section id="game-screen" class="game-screen hidden" aria-live="polite">
                 <div class="puzzle-container" id="puzzle-container" role="region" aria-label="Current puzzle">
-                    <!-- Puzzle will be inserted here dynamically -->
+                    <div class="puzzle-question" id="puzzle-question">1 + 1 = ?</div>
+                    <div class="puzzle-instruction" id="puzzle-instruction">
+                        Press <strong>Enter</strong> to start the puzzle timer
+                    </div>
+                    <div class="puzzle-timer" id="puzzle-timer"></div>
                 </div>
                 
                 <div class="options-container" id="options-container" role="radiogroup" aria-label="Answer options">
@@ -123,7 +94,7 @@
                 </div>
 
                 <!-- Feedback Display -->
-                <div class="feedback-container" id="feedback-container" aria-live="assertive">
+                <div class="feedback-container hidden" id="feedback-container" aria-live="assertive">
                     <div class="feedback-message" id="feedback-message"></div>
                     <div class="feedback-explanation" id="feedback-explanation"></div>
                 </div>
@@ -134,6 +105,64 @@
                 </button>
             </section>
 
+            <!-- Sanity Ledger Screen -->
+            <section id="ledger-screen" class="ledger-screen hidden">
+                <div class="ledger-content">
+                    <h2 class="ledger-title">🏛️ Sanity Ledger</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: var(--spacing-lg);">
+                        The Overlord demands tribute. Pay your tax to access the marketplace.
+                    </p>
+                    
+                    <div class="tax-display">
+                        <div class="label">Overlord Tax</div>
+                        <div class="value" id="tax-amount">0</div>
+                    </div>
+                    
+                    <div class="ledger-stats">
+                        <div class="ledger-stat">
+                            <span class="ledger-stat-label">Peace Coins</span>
+                            <span class="ledger-stat-value" id="ledger-coins">100</span>
+                        </div>
+                        <div class="ledger-stat">
+                            <span class="ledger-stat-label">Sanity Scraps</span>
+                            <span class="ledger-stat-value" id="ledger-sanity">0</span>
+                        </div>
+                        <div class="ledger-stat">
+                            <span class="ledger-stat-label">Madness</span>
+                            <span class="ledger-stat-value" id="ledger-madness">0</span>
+                        </div>
+                    </div>
+                    
+                    <div class="purchase-section">
+                        <h3 class="purchase-title">Purchase Sanity Scraps</h3>
+                        <div class="purchase-option">
+                            <div class="purchase-info">
+                                <span>🧘 Sanity Scrap</span>
+                                <span style="color: var(--text-muted);">- Reduces Madness by 10</span>
+                            </div>
+                            <button class="purchase-btn" id="buy-sanity-btn" data-cost="50">
+                                Buy for 50 🪙
+                            </button>
+                        </div>
+                        <div class="purchase-option">
+                            <div class="purchase-info">
+                                <span>🧘🧘 5 Sanity Scraps</span>
+                                <span style="color: var(--text-muted);">- Better value!</span>
+                            </div>
+                            <button class="purchase-btn" id="buy-sanity-5-btn" data-cost="200">
+                                Buy for 200 🪙
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: var(--spacing-xl);">
+                        <button class="btn btn-primary btn-large" id="leave-ledger-btn" aria-label="Leave ledger">
+                            Leave Ledger
+                        </button>
+                    </div>
+                </div>
+            </section>
+
             <!-- Game Over Screen -->
             <section id="game-over-screen" class="game-over-screen hidden" aria-live="polite">
                 <div class="game-over-content">
@@ -141,13 +170,18 @@
                     <div class="game-over-stats">
                         <div class="stat-item">
                             <span class="stat-icon" aria-hidden="true">🪙</span>
-                            <span class="stat-label">Total Coins</span>
+                            <span class="stat-label">Peace Coins</span>
                             <span class="stat-value" id="final-coins">0</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-icon" aria-hidden="true">🧩</span>
-                            <span class="stat-label">Puzzles Solved</span>
-                            <span class="stat-value" id="final-puzzles">0</span>
+                            <span class="stat-icon" aria-hidden="true">🧘</span>
+                            <span class="stat-label">Sanity Scraps</span>
+                            <span class="stat-value" id="final-sanity">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-icon" aria-hidden="true">😵</span>
+                            <span class="stat-label">Madness</span>
+                            <span class="stat-value" id="final-madness">0</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-icon" aria-hidden="true">🏆</span>
@@ -155,86 +189,31 @@
                             <span class="stat-value" id="final-level">0</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-icon" aria-hidden="true">🔥</span>
-                            <span class="stat-label">Longest Streak</span>
-                            <span class="stat-value" id="final-streak">0</span>
+                            <span class="stat-icon" aria-hidden="true">🔄</span>
+                            <span class="stat-label">Cycles</span>
+                            <span class="stat-value" id="final-cycles">0</span>
                         </div>
-                    </div>
-                    <div class="achievements-display" id="achievements-display">
-                        <h3>Achievements Unlocked</h3>
-                        <div class="achievements-list" id="achievements-list"></div>
+                        <div class="stat-item">
+                            <span class="stat-icon" aria-hidden="true">🧩</span>
+                            <span class="stat-label">Puzzles Solved</span>
+                            <span class="stat-value" id="final-puzzles">0</span>
+                        </div>
                     </div>
                     <div class="game-over-buttons">
                         <button class="btn btn-primary" id="play-again-btn" aria-label="Play again">Play Again</button>
-                        <button class="btn btn-secondary" id="view-stats-btn" aria-label="View detailed statistics">View Details</button>
+                        <button class="btn btn-secondary" id="reset-game-btn" aria-label="Reset game">Reset Game</button>
                     </div>
                 </div>
             </section>
-
-            <!-- Stats Modal -->
-            <div id="stats-modal" class="modal" role="dialog" aria-labelledby="stats-title" aria-modal="true">
-                <div class="modal-content modal-wide">
-                    <button class="modal-close" id="stats-modal-close" aria-label="Close modal">&times;</button>
-                    <h2 id="stats-title">Your Puzzle Journey</h2>
-                    <div class="stats-grid" id="stats-grid">
-                        <!-- Stats will be inserted here -->
-                    </div>
-                    <button class="btn btn-secondary" id="close-stats-btn" aria-label="Close statistics">Close</button>
-                </div>
-            </div>
-
-            <!-- Settings Button -->
-            <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Open settings">
-                <span class="settings-icon" aria-hidden="true">⚙</span>
-            </button>
-
-            <!-- Settings Modal -->
-            <div id="settings-modal" class="modal" role="dialog" aria-labelledby="settings-title" aria-modal="true">
-                <div class="modal-content">
-                    <button class="modal-close" id="settings-modal-close" aria-label="Close modal">&times;</button>
-                    <h2 id="settings-title">Settings</h2>
-                    <div class="settings-options">
-                        <div class="setting-item">
-                            <label for="sound-toggle">Sound Effects</label>
-                            <div class="toggle-switch">
-                                <input type="checkbox" id="sound-toggle" checked aria-label="Toggle sound effects">
-                                <span class="slider"></span>
-                            </div>
-                        </div>
-                        <div class="setting-item">
-                            <label for="animation-toggle">Animations</label>
-                            <div class="toggle-switch">
-                                <input type="checkbox" id="animation-toggle" checked aria-label="Toggle animations">
-                                <span class="slider"></span>
-                            </div>
-                        </div>
-                        <div class="setting-item">
-                            <label for="reduced-motion">Reduced Motion</label>
-                            <div class="toggle-switch">
-                                <input type="checkbox" id="reduced-motion" aria-label="Toggle reduced motion">
-                                <span class="slider"></span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="settings-danger">
-                        <button class="btn btn-danger" id="reset-game-btn" aria-label="Reset game progress">Reset Game Progress</button>
-                        <p class="reset-warning">This will delete all saved progress and achievements.</p>
-                    </div>
-                    <button class="btn btn-secondary" id="close-settings-btn" aria-label="Close settings">Close</button>
-                </div>
-            </div>
 
         </main>
 
         <!-- Footer -->
         <footer class="game-footer">
-            <p>Pattern Quest - A puzzle adventure game</p>
+            <p>Pattern Quest - Core Game State</p>
         </footer>
     </div>
 
-    <!-- Notification Toast -->
-    <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-  
 </body>
 </html>
