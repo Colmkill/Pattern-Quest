@@ -1051,8 +1051,8 @@ const CONFIG = {
     initialLevel: 1,
     initialPuzzle: 1,
     
-    puzzlesPerLevel: 10,
-    puzzlesPerCycle: 10,
+    puzzlesPerLevel: 100,
+    puzzlesPerCycle: 500,
     
     madness: {
         wrongAnswer: 15,
@@ -1084,6 +1084,9 @@ const gameState = {
     puzzleActive: false,
     puzzleTimedOut: false,
     secondsLeft: CONFIG.timer.seconds,
+    
+    // Milliseconds to pause after an answer before auto-advancing (0 = no reprieve)
+    reprieveTime: 2000,
     
     correctAnswers: 0,
     incorrectAnswers: 0,
@@ -1306,11 +1309,10 @@ class PatternQuest {
         elements.feedbackMessage.textContent = "Time's up! 😵";
         elements.feedbackMessage.className = 'feedback-message incorrect';
         elements.feedbackExplanation.textContent =
-            `The clock ran out. Madness +${CONFIG.madness.timeout}. Press Continue to try the next puzzle.`;
+            `The clock ran out. Madness +${CONFIG.madness.timeout}. The next puzzle is coming...`;
         
-        // Show continue button so the player moves on
-        elements.continueBtn.classList.remove('hidden');
-        setTimeout(() => elements.continueBtn.focus(), 100);
+        // Reprieve pause, then continue automatically to the next puzzle
+        this.startReprieve();
         
         console.log(`Time out! Madness +${CONFIG.madness.timeout}`);
     }
@@ -1348,9 +1350,36 @@ class PatternQuest {
             card.disabled = true;
         });
         
-        // FIX: Show continue button
-        elements.continueBtn.classList.remove('hidden');
-        setTimeout(() => elements.continueBtn.focus(), 100);
+        // Start the reprieve: feedback is shown now, next puzzle loads automatically
+        this.startReprieve();
+    }
+    
+    // ===== REPRIEVE =====
+    // Pauses briefly after an answer, then continues automatically.
+    // Duration always comes from gameState.reprieveTime (0 = advance immediately).
+    startReprieve() {
+        // Prevent multiple answer selections from stacking timers
+        this.clearReprieve();
+        
+        const duration = gameState.reprieveTime;
+        
+        if (!duration || duration <= 0) {
+            // No reprieve - continue immediately
+            this.continuePuzzle();
+            return;
+        }
+        
+        this.reprieveTimeout = setTimeout(() => {
+            this.reprieveTimeout = null;
+            this.continuePuzzle();
+        }, duration);
+    }
+    
+    clearReprieve() {
+        if (this.reprieveTimeout) {
+            clearTimeout(this.reprieveTimeout);
+            this.reprieveTimeout = null;
+        }
     }
     
     continuePuzzle() {
@@ -1359,9 +1388,9 @@ class PatternQuest {
         this._advancing = true;
         setTimeout(() => { this._advancing = false; }, 200);
         
+        this.clearReprieve();
         this.stopTimer();
         elements.continueBtn.classList.add('hidden');
-        elements.continueBtn.blur();
         elements.feedbackContainer.classList.add('hidden');
         
         const puzzleNumber = gameState.currentPuzzle;
@@ -1499,6 +1528,7 @@ class PatternQuest {
         gameState.gameActive = false;
         
         this.stopTimer();
+        this.clearReprieve();
         
         this.updateUI();
         
