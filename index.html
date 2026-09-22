@@ -299,7 +299,8 @@ body {
 
 .puzzle-container {
     width: 100%;
-    max-width: 500px;
+    max-width: 600px; /* matches the answer-tile column for a consistent layout */
+    box-sizing: border-box;
     background: var(--bg-secondary);
     border: 2px solid var(--border-color);
     border-radius: var(--radius-lg);
@@ -311,7 +312,7 @@ body {
     align-items: center;
     justify-content: center;
     position: relative;
-    overflow: hidden;
+    /* no overflow: hidden — long patterns must stay fully visible and can grow the box */
 }
 
 .puzzle-ready {
@@ -330,7 +331,8 @@ body {
 }
 
 .puzzle-question {
-    font-size: 3rem;
+    /* responsive sizing: shrinks smoothly on narrow screens, never to unreadable */
+    font-size: clamp(1.5rem, 4.5vw, 3rem);
     font-weight: 700;
     color: var(--text-primary);
     margin-bottom: var(--spacing-md);
@@ -338,6 +340,7 @@ body {
     text-align: center;
     line-height: 1.6;
     overflow-wrap: anywhere; /* long symbol sequences wrap instead of overflowing */
+    white-space: normal;
 }
 
 .puzzle-instruction {
@@ -761,10 +764,7 @@ body {
         grid-template-columns: 1fr; /* keep the single-column stack on mobile */
         gap: var(--spacing-sm);
     }
-    
-    .puzzle-question {
-        font-size: 2.5rem;
-    }
+    /* puzzle-question sizing is handled by clamp() for all widths */
 }
 
 @media (max-width: 480px) {
@@ -792,10 +792,7 @@ body {
     .options-container {
         grid-template-columns: 1fr; /* keep the single-column stack on mobile */
     }
-    
-    .puzzle-question {
-        font-size: 2rem;
-    }
+    /* puzzle-question sizing is handled by clamp() for all widths */
     
     .puzzle-instruction {
         font-size: 0.9rem;
@@ -1060,8 +1057,8 @@ const CONFIG = {
     initialLevel: 1,
     initialPuzzle: 1,
     
-    puzzlesPerLevel: 10,
-    puzzlesPerCycle: 15,
+    puzzlesPerLevel: 100,
+    puzzlesPerCycle: 500,
     
     madness: {
         wrongAnswer: 15,
@@ -1171,7 +1168,7 @@ const elements = {
 const PuzzleGen = {
     idCounter: 1,
     shapes: ['▲', '●', '■', '◆', '★', '◇', '▼', '◐'],
-    SEP: '&nbsp;&nbsp;',
+    SEP: '  ', // regular spaces so long sequences can wrap naturally (no clipping)
     
     // --- Shared helpers ---
     rand(min, max) {
