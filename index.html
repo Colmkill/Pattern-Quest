@@ -892,7 +892,7 @@ body {
                     <p class="start-subtitle">A visual puzzle adventure</p>
                     <div class="start-description">
                         <p>Solve puzzles, earn Peace Coins, and manage your Sanity.</p>
-                        <p><strong>Press Enter to start each puzzle timer.</strong></p>
+                        <p><strong>Press Enter once to begin</strong> — after that, the game flows automatically.</p>
                     </div>
                     <button class="btn btn-primary btn-large" id="start-btn" aria-label="Start game">
                         <span class="btn-icon" aria-hidden="true">▶</span>
@@ -906,7 +906,7 @@ body {
                 <div class="puzzle-container puzzle-ready" id="puzzle-container" role="region" aria-label="Current puzzle" tabindex="0">
                     <div class="puzzle-question" id="puzzle-question">1 + 1 = ?</div>
                     <div class="puzzle-instruction" id="puzzle-instruction">
-                        Press <strong>Enter</strong> or click here to start timer
+                        Press <strong>Enter</strong> to begin — puzzles then flow automatically
                     </div>
                     <div class="puzzle-timer" id="puzzle-timer"></div>
                 </div>
@@ -922,7 +922,7 @@ body {
                 </div>
 
                 <!-- Continue Button -->
-                <button class="btn btn-primary" id="continue-btn" aria-label="Continue to next puzzle">
+                <button class="btn btn-primary hidden" id="continue-btn" aria-label="Continue to next puzzle">
                     Continue
                 </button>
             </section>
@@ -1051,8 +1051,8 @@ const CONFIG = {
     initialLevel: 1,
     initialPuzzle: 1,
     
-    puzzlesPerLevel: 100,
-    puzzlesPerCycle: 500,
+    puzzlesPerLevel: 10,
+    puzzlesPerCycle: 10,
     
     madness: {
         wrongAnswer: 15,
@@ -1226,6 +1226,11 @@ class PatternQuest {
         
         // Prevent Enter on the still-focused Start button from re-running startGame
         elements.startBtn.blur();
+        
+        // First puzzle of the session waits for Enter; every later puzzle flows automatically
+        elements.puzzleInstruction.innerHTML =
+            'Press <strong>Enter</strong> once to start the first puzzle — after that, everything flows automatically';
+        elements.continueBtn.classList.add('hidden');
         
         this.updateUI();
         this.renderOptions(); // FIX: Ensure options are rendered
@@ -1413,7 +1418,10 @@ class PatternQuest {
         
         this.updateUI();
         this.resetPuzzleDisplay();
-        this.renderOptions(); // FIX: Re-render options
+        this.renderOptions(); // Re-render options
+        
+        // Progression is automatic: the next puzzle starts on its own
+        this.startPuzzle();
     }
     
     // ===== REQUIRED CORE FUNCTIONS =====
@@ -1609,7 +1617,7 @@ class PatternQuest {
     resetPuzzleDisplay() {
         elements.puzzleContainer.classList.add('puzzle-ready');
         elements.puzzleContainer.classList.remove('puzzle-started');
-        elements.puzzleInstruction.textContent = 'Press Enter or click to start the puzzle';
+        elements.puzzleInstruction.textContent = 'Next puzzle incoming...';
         elements.puzzleTimer.textContent = `Time: ${CONFIG.timer.seconds}s`;
         elements.puzzleTimer.style.color = 'var(--secondary-color)';
         elements.optionsContainer.innerHTML = '';
