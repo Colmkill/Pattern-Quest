@@ -1,4 +1,3 @@
-
     <script>
 // ============================================
 // PATTERN QUEST - Core Game State Implementation
@@ -15,13 +14,18 @@ const CONFIG = {
     initialPuzzle: 1,
     
     puzzlesPerLevel: 10,
-    puzzlesPerCycle: 5,
+    puzzlesPerCycle: 10,
     
     madness: {
         wrongAnswer: 15,
         timeMultiplier: 0.1,
         correctReduction: 2,
-        sanityScrapValue: 10
+        sanityScrapValue: 10,
+        timeout: 20 // Madness increase when the timer reaches zero
+    },
+    
+    timer: {
+        seconds: 20 // Countdown duration per puzzle (20 -> 0)
     },
     
     baseTax: 10,
@@ -40,6 +44,7 @@ const gameState = {
     puzzleStartTime: null,
     puzzleStarted: false,
     puzzleActive: false,
+    puzzleTimedOut: false,
     
     correctAnswers: 0,
     incorrectAnswers: 0,
@@ -185,15 +190,16 @@ class PatternQuest {
         gameState.puzzleStarted = true;
         gameState.puzzleStartTime = Date.now();
         gameState.puzzleActive = false;
+        gameState.puzzleTimedOut = false;
         
         elements.puzzleContainer.classList.remove('puzzle-ready');
         elements.puzzleContainer.classList.add('puzzle-started');
-        elements.puzzleInstruction.textContent = 'Select your answer';
+        elements.puzzleInstruction.textContent = 'Select your answer before the timer hits zero!';
         
         this.updateTimer();
-        this.timerInterval = setInterval(() => this.updateTimer(), 1000);
+        this.timerInterval = setInterval(() => this.updateTimer(), 250);
         
-        console.log('Puzzle timer started');
+        console.log('Puzzle timer started (countdown from ' + CONFIG.timer.seconds + 's)');
     }
     
     updateTimer() {
@@ -202,8 +208,51 @@ class PatternQuest {
             return;
         }
         
-        const elapsed = Math.floor((Date.now() - gameState.puzzleStartTime) / 1000);
-        elements.puzzleTimer.textContent = `Time: ${elapsed}s`;
+        const elapsed = (Date.now() - gameState.puzzleStartTime) / 1000;
+        const secondsLeft = Math.max(0, Math.ceil(CONFIG.timer.seconds - elapsed));
+        
+        elements.puzzleTimer.textContent = `Time: ${secondsLeft}s`;
+        
+        // Highlight when time is running low
+        elements.puzzleTimer.style.color = secondsLeft <= 5 ? 'var(--error-color)' : 'var(--secondary-color)';
+        
+        // Timer reached zero -> Madness increases and puzzle is locked out
+        if (secondsLeft <= 0) {
+            this.handleTimeout();
+        }
+    }
+    
+    handleTimeout() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+        
+        gameState.puzzleTimedOut = true;
+        gameState.puzzleActive = true; // Lock out further answers for this puzzle
+        
+        // Increase Madness for letting the timer run out
+        gameState.madness += CONFIG.madness.timeout;
+        gameState.incorrectAnswers++;
+        this.updateUI();
+        
+        // Disable all options
+        document.querySelectorAll('.option-card').forEach(card => {
+            card.disabled = true;
+        });
+        
+        // Show feedback
+        elements.feedbackContainer.classList.remove('hidden');
+        elements.feedbackMessage.textContent = "Time's up! 😵";
+        elements.feedbackMessage.className = 'feedback-message incorrect';
+        elements.feedbackExplanation.textContent =
+            `The clock ran out. Madness +${CONFIG.madness.timeout}. Press Continue to try the next puzzle.`;
+        
+        // Show continue button so the player moves on
+        elements.continueBtn.classList.remove('hidden');
+        setTimeout(() => elements.continueBtn.focus(), 100);
+        
+        console.log(`Time out! Madness +${CONFIG.madness.timeout}`);
     }
     
     selectOption(optionCard) {
@@ -218,7 +267,7 @@ class PatternQuest {
     }
     
     checkAnswer(optionCard) {
-        if (!gameState.puzzleStarted || !gameState.puzzleStartTime) return;
+        if (!gameState.puzzleStarted || !gameState.puzzleStartTime || gameState.puzzleTimedOut) return;
         
         const selectedValue = parseInt(optionCard.dataset.value);
         const isCorrect = selectedValue === 2;
@@ -267,6 +316,7 @@ class PatternQuest {
         gameState.puzzleStarted = false;
         gameState.puzzleStartTime = null;
         gameState.puzzleActive = true;
+        gameState.puzzleTimedOut = false;
         
         this.updateUI();
         this.resetPuzzleDisplay();
@@ -274,21 +324,6 @@ class PatternQuest {
     }
     
     // ===== REQUIRED CORE FUNCTIONS =====
-    startPuzzle() {
-        if (gameState.puzzleStarted) return;
-        
-        gameState.puzzleStarted = true;
-        gameState.puzzleStartTime = Date.now();
-        gameState.puzzleActive = false;
-        
-        elements.puzzleContainer.classList.remove('puzzle-ready');
-        elements.puzzleContainer.classList.add('puzzle-started');
-        elements.puzzleInstruction.textContent = 'Select your answer';
-        
-        this.updateTimer();
-        this.timerInterval = setInterval(() => this.updateTimer(), 1000);
-    }
-    
     completePuzzle() {
         // Puzzle completion logic
     }
@@ -389,6 +424,7 @@ class PatternQuest {
         gameState.puzzleStartTime = null;
         gameState.puzzleStarted = false;
         gameState.puzzleActive = false;
+        gameState.puzzleTimedOut = false;
         gameState.correctAnswers = 0;
         gameState.incorrectAnswers = 0;
         gameState.totalResponseTime = 0;
@@ -482,7 +518,8 @@ class PatternQuest {
         elements.puzzleContainer.classList.add('puzzle-ready');
         elements.puzzleContainer.classList.remove('puzzle-started');
         elements.puzzleInstruction.textContent = 'Press Enter or click to start the puzzle';
-        elements.puzzleTimer.textContent = '';
+        elements.puzzleTimer.textContent = `Time: ${CONFIG.timer.seconds}s`;
+        elements.puzzleTimer.style.color = 'var(--secondary-color)';
         elements.optionsContainer.innerHTML = '';
         elements.feedbackContainer.classList.add('hidden');
         elements.continueBtn.classList.add('hidden');
