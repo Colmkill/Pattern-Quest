@@ -334,6 +334,10 @@ body {
     font-weight: 700;
     color: var(--text-primary);
     margin-bottom: var(--spacing-md);
+    max-width: 100%;
+    text-align: center;
+    line-height: 1.6;
+    overflow-wrap: anywhere; /* long symbol sequences wrap instead of overflowing */
 }
 
 .puzzle-instruction {
@@ -353,13 +357,15 @@ body {
     width: 100%;
     max-width: 600px;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    grid-template-columns: 1fr; /* single vertical column of answer tiles */
     gap: var(--spacing-md);
     padding: var(--spacing-md);
 }
 
 .option-card {
-    aspect-ratio: 1;
+    min-height: 64px; /* comfortable vertical room for full answers */
+    width: 100%;
+    box-sizing: border-box;
     background: var(--bg-secondary);
     border: 2px solid var(--border-color);
     border-radius: var(--radius-lg);
@@ -369,7 +375,8 @@ body {
     align-items: center;
     justify-content: center;
     position: relative;
-    overflow: hidden;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .option-card:hover:not(:disabled) {
@@ -403,11 +410,13 @@ body {
 
 .option-content {
     width: 90%;
-    height: 90%;
     display: flex;
     align-items: center;
     justify-content: center;
+    text-align: center;
     font-size: 2rem;
+    line-height: 1.6; /* readable multi-line wrapping for long patterns */
+    white-space: normal; /* allow long answers to wrap instead of clipping */
 }
 
 .option-label {
@@ -749,7 +758,7 @@ body {
     }
     
     .options-container {
-        grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+        grid-template-columns: 1fr; /* keep the single-column stack on mobile */
         gap: var(--spacing-sm);
     }
     
@@ -781,7 +790,7 @@ body {
     }
     
     .options-container {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: 1fr; /* keep the single-column stack on mobile */
     }
     
     .puzzle-question {
@@ -1051,8 +1060,8 @@ const CONFIG = {
     initialLevel: 1,
     initialPuzzle: 1,
     
-    puzzlesPerLevel: 100,
-    puzzlesPerCycle: 500,
+    puzzlesPerLevel: 10,
+    puzzlesPerCycle: 15,
     
     madness: {
         wrongAnswer: 15,
