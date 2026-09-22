@@ -916,15 +916,15 @@ body {
                     </div>
                     <div class="puzzle-timer" id="puzzle-timer"></div>
                 </div>
-                
-                <div class="options-container" id="options-container" role="radiogroup" aria-label="Answer options">
-                    <!-- Options will be rendered here -->
-                </div>
 
-                <!-- Feedback Display -->
+                <!-- Feedback Display (below the puzzle diagram, above the answer tiles) -->
                 <div class="feedback-container hidden" id="feedback-container" aria-live="assertive">
                     <div class="feedback-message" id="feedback-message"></div>
                     <div class="feedback-explanation" id="feedback-explanation"></div>
+                </div>
+
+                <div class="options-container" id="options-container" role="radiogroup" aria-label="Answer options">
+                    <!-- Options will be rendered here -->
                 </div>
 
                 <!-- Continue Button -->
@@ -1057,8 +1057,8 @@ const CONFIG = {
     initialLevel: 1,
     initialPuzzle: 1,
     
-    puzzlesPerLevel: 10,
-    puzzlesPerCycle: 20,
+    puzzlesPerLevel: 100,
+    puzzlesPerCycle: 500,
     
     madness: {
         wrongAnswer: 15,
