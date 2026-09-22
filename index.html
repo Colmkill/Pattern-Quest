@@ -301,6 +301,7 @@ body {
     width: 100%;
     max-width: 600px; /* matches the answer-tile column for a consistent layout */
     box-sizing: border-box;
+    order: 1; /* enforce: diagram (1) -> result (2) -> answer tiles (3) */
     background: var(--bg-secondary);
     border: 2px solid var(--border-color);
     border-radius: var(--radius-lg);
@@ -363,6 +364,7 @@ body {
     grid-template-columns: 1fr; /* single vertical column of answer tiles */
     gap: var(--spacing-md);
     padding: var(--spacing-md);
+    order: 3; /* enforce: diagram (1) -> result (2) -> answer tiles (3) */
 }
 
 .option-card {
@@ -436,12 +438,13 @@ body {
 /* Feedback */
 .feedback-container {
     width: 100%;
-    max-width: 500px;
+    max-width: 600px; /* match puzzle container and answer tiles */
     padding: var(--spacing-lg);
     text-align: center;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
+    order: 2; /* enforce: diagram (1) -> result (2) -> answer tiles (3) */
 }
 
 .feedback-message {
@@ -928,7 +931,7 @@ body {
                 </div>
 
                 <!-- Continue Button -->
-                <button class="btn btn-primary hidden" id="continue-btn" aria-label="Continue to next puzzle">
+                <button class="btn btn-primary hidden" id="continue-btn" aria-label="Continue to next puzzle" style="order: 4;">
                     Continue
                 </button>
             </section>
