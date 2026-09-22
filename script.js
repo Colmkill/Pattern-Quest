@@ -45,6 +45,10 @@ const gameState = {
     puzzleStarted: false,
     puzzleActive: false,
     puzzleTimedOut: false,
+    secondsLeft: CONFIG.timer.seconds,
+    
+    // Milliseconds to pause after an answer before auto-advancing (0 = no reprieve)
+    reprieveTime: 2000,
     
     correctAnswers: 0,
     incorrectAnswers: 0,
@@ -169,6 +173,9 @@ class PatternQuest {
     
     // ===== GAME FLOW =====
     startGame() {
+        // Stop any stray timer from a previous run
+        this.stopTimer();
+        
         gameState.puzzleStartTime = null;
         gameState.puzzleStarted = false;
         gameState.puzzleActive = true;
@@ -178,6 +185,9 @@ class PatternQuest {
         elements.gameScreen.classList.remove('hidden');
         elements.ledgerScreen.classList.add('hidden');
         elements.gameOverScreen.classList.add('hidden');
+        
+        // Prevent Enter on the still-focused Start button from re-running startGame
+        elements.startBtn.blur();
         
         this.updateUI();
         this.renderOptions(); // FIX: Ensure options are rendered
@@ -196,37 +206,52 @@ class PatternQuest {
         elements.puzzleContainer.classList.add('puzzle-started');
         elements.puzzleInstruction.textContent = 'Select your answer before the timer hits zero!';
         
-        this.updateTimer();
-        this.timerInterval = setInterval(() => this.updateTimer(), 250);
+        this.startTimerCountdown();
         
         console.log('Puzzle timer started (countdown from ' + CONFIG.timer.seconds + 's)');
     }
     
-    updateTimer() {
-        if (!gameState.puzzleStarted || !gameState.puzzleStartTime) {
-            elements.puzzleTimer.textContent = '';
-            return;
-        }
+    // Always clear any existing timer before starting a new one
+    startTimerCountdown() {
+        this.stopTimer();
         
-        const elapsed = (Date.now() - gameState.puzzleStartTime) / 1000;
-        const secondsLeft = Math.max(0, Math.ceil(CONFIG.timer.seconds - elapsed));
+        gameState.secondsLeft = CONFIG.timer.seconds;
+        this.renderTimer();
         
-        elements.puzzleTimer.textContent = `Time: ${secondsLeft}s`;
-        
-        // Highlight when time is running low
-        elements.puzzleTimer.style.color = secondsLeft <= 5 ? 'var(--error-color)' : 'var(--secondary-color)';
-        
-        // Timer reached zero -> Madness increases and puzzle is locked out
-        if (secondsLeft <= 0) {
-            this.handleTimeout();
-        }
+        this.timerInterval = setInterval(() => {
+            gameState.secondsLeft--;
+            this.renderTimer();
+            
+            if (gameState.secondsLeft <= 0) {
+                this.handleTimeout();
+            }
+        }, 1000);
     }
     
-    handleTimeout() {
+    // Stop any running timer
+    stopTimer() {
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
         }
+    }
+    
+    renderTimer() {
+        if (!gameState.puzzleStarted) {
+            return;
+        }
+        
+        const secondsLeft = Math.max(0, gameState.secondsLeft);
+        elements.puzzleTimer.textContent = `Time: ${secondsLeft}s`;
+        
+        // Highlight when time is running low
+        elements.puzzleTimer.style.color = secondsLeft <= 5 ? 'var(--error-color)' : 'var(--secondary-color)';
+    }
+    
+    handleTimeout() {
+        this.stopTimer();
+        gameState.secondsLeft = 0;
+        this.renderTimer();
         
         gameState.puzzleTimedOut = true;
         gameState.puzzleActive = true; // Lock out further answers for this puzzle
@@ -246,11 +271,10 @@ class PatternQuest {
         elements.feedbackMessage.textContent = "Time's up! 😵";
         elements.feedbackMessage.className = 'feedback-message incorrect';
         elements.feedbackExplanation.textContent =
-            `The clock ran out. Madness +${CONFIG.madness.timeout}. Press Continue to try the next puzzle.`;
+            `The clock ran out. Madness +${CONFIG.madness.timeout}. The next puzzle is coming...`;
         
-        // Show continue button so the player moves on
-        elements.continueBtn.classList.remove('hidden');
-        setTimeout(() => elements.continueBtn.focus(), 100);
+        // Reprieve pause, then continue automatically to the next puzzle
+        this.startReprieve();
         
         console.log(`Time out! Madness +${CONFIG.madness.timeout}`);
     }
@@ -272,10 +296,7 @@ class PatternQuest {
         const selectedValue = parseInt(optionCard.dataset.value);
         const isCorrect = selectedValue === 2;
         
-        if (this.timerInterval) {
-            clearInterval(this.timerInterval);
-            this.timerInterval = null;
-        }
+        this.stopTimer();
         
         const responseTime = Date.now() - gameState.puzzleStartTime;
         
@@ -291,12 +312,46 @@ class PatternQuest {
             card.disabled = true;
         });
         
-        // FIX: Show continue button
-        elements.continueBtn.classList.remove('hidden');
-        setTimeout(() => elements.continueBtn.focus(), 100);
+        // Start the reprieve: feedback is shown now, next puzzle loads automatically
+        this.startReprieve();
+    }
+    
+    // ===== REPRIEVE =====
+    // Pauses briefly after an answer, then continues automatically.
+    // Duration always comes from gameState.reprieveTime (0 = advance immediately).
+    startReprieve() {
+        // Prevent multiple answer selections from stacking timers
+        this.clearReprieve();
+        
+        const duration = gameState.reprieveTime;
+        
+        if (!duration || duration <= 0) {
+            // No reprieve - continue immediately
+            this.continuePuzzle();
+            return;
+        }
+        
+        this.reprieveTimeout = setTimeout(() => {
+            this.reprieveTimeout = null;
+            this.continuePuzzle();
+        }, duration);
+    }
+    
+    clearReprieve() {
+        if (this.reprieveTimeout) {
+            clearTimeout(this.reprieveTimeout);
+            this.reprieveTimeout = null;
+        }
     }
     
     continuePuzzle() {
+        // Guard: ignore repeat calls (e.g. Enter firing click on a focused button)
+        if (this._advancing) return;
+        this._advancing = true;
+        setTimeout(() => { this._advancing = false; }, 200);
+        
+        this.clearReprieve();
+        this.stopTimer();
         elements.continueBtn.classList.add('hidden');
         elements.feedbackContainer.classList.add('hidden');
         
@@ -425,6 +480,7 @@ class PatternQuest {
         gameState.puzzleStarted = false;
         gameState.puzzleActive = false;
         gameState.puzzleTimedOut = false;
+        gameState.secondsLeft = CONFIG.timer.seconds;
         gameState.correctAnswers = 0;
         gameState.incorrectAnswers = 0;
         gameState.totalResponseTime = 0;
@@ -433,10 +489,8 @@ class PatternQuest {
         gameState.highestLevelReached = CONFIG.initialLevel;
         gameState.gameActive = false;
         
-        if (this.timerInterval) {
-            clearInterval(this.timerInterval);
-            this.timerInterval = null;
-        }
+        this.stopTimer();
+        this.clearReprieve();
         
         this.updateUI();
         
