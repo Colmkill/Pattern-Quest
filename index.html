@@ -1861,8 +1861,12 @@ class PatternQuest {
         this.resetPuzzleDisplay();
         this.renderOptions(); // Re-render options
         
-        // Progression is automatic: the next puzzle starts on its own
-        this.startPuzzle();
+        // Progression is automatic: the next puzzle starts on its own.
+        // Exception: if the Sanity Ledger just opened, don't start the timer
+        // while the ledger is on screen — leaveLedger() starts it on exit.
+        if (elements.ledgerScreen.classList.contains('hidden')) {
+            this.startPuzzle();
+        }
     }
     
     // ===== REQUIRED CORE FUNCTIONS =====
@@ -2117,9 +2121,9 @@ class PatternQuest {
         this.loadNextPuzzle(); // Phase 7: new level/cycle needs a fresh puzzle
         this.resetPuzzleDisplay();
         
-        if (gameState.currentPuzzle === 1) {
-            this.startPuzzle();
-        }
+        // Always (re)start the puzzle after leaving the ledger so the timer
+        // display is visible and updating (previously only ran on puzzle 1)
+        this.startPuzzle();
     }
     
     resetAndStart() {
