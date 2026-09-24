@@ -410,8 +410,7 @@ body {
 
 .option-card:disabled {
     cursor: not-allowed;
-    /* opacity removed: dimming made filled vs outline symbols hard to
-       distinguish when comparing question and answer tiles */
+    opacity: 0.6;
 }
 
 .option-content {
@@ -421,8 +420,6 @@ body {
     justify-content: center;
     text-align: center;
     font-size: 2rem;
-    font-weight: 700; /* match the question tile's glyph rendering */
-    color: var(--text-primary); /* same bright symbol colour as the question */
     line-height: 1.6; /* readable multi-line wrapping for long patterns */
     white-space: normal; /* allow long answers to wrap instead of clipping */
 }
@@ -1063,8 +1060,8 @@ const CONFIG = {
     initialLevel: 1,
     initialPuzzle: 1,
     
-    puzzlesPerLevel: 5,
-    puzzlesPerCycle: 15,
+    puzzlesPerLevel: 10,
+    puzzlesPerCycle: 30,
     
     madness: {
         wrongAnswer: 15,
@@ -1181,7 +1178,7 @@ const PuzzleGen = {
   '◄', '►', '△', '▽', '◁', '▷', '◣', '◢', '◤', '◥',
 
   // Circles & Ovals
-  '○', '◌', '◎', '◉', 
+  '○', '◌', '◎', '◉',
 
   // Squares & Rectangles
   '□', '▢', '▣', '▤', '▥', '▧', '▬', '▮',
