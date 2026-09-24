@@ -1173,7 +1173,25 @@ const elements = {
 // =====================================================
 const PuzzleGen = {
     idCounter: 1,
-    shapes: ['▲', '●', '■', '◆', '★', '◇', '▼', '◐'],
+    shapes: [
+  // Original Set
+  '▲', '●', '■', '◆', '★', '◇', '▼', '◐',
+
+  // Triangles & Pointers
+  '◄', '►', '△', '▽', '◁', '▷', '◣', '◢', '◤', '◥',
+
+  // Circles & Ovals
+  '○', '◌', '◎', '◉', '🔘',
+
+  // Squares & Rectangles
+  '□', '▢', '▣', '▤', '▥', '▧', '▬', '▮',
+
+  // Diamonds & Stars
+  '◈', '☆', '✦', '✧', '✶', '✷',
+
+  // Shaded, Halved & Segmented Shapes
+  '◑', '◒', '◓', '◖', '◗', '▰', '▱'
+],
     SEP: '  ', // regular spaces so long sequences can wrap naturally (no clipping)
     
     // --- Shared helpers ---
