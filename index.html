@@ -1585,6 +1585,45 @@ const PuzzleGen = {
     }
 };
 
+// ===== Phase 9: Puzzle Factory =====
+// A thin orchestration layer between the game and the existing PuzzleGen system.
+// It decides which category and difficulty to request, routes to the existing
+// generators via PuzzleGen.generatePuzzle(), enforces the Phase 8 contract with
+// the existing validate(), and retries through the existing retry/fallback path.
+// It contains no puzzle-content logic and no second generation system.
+const PuzzleFactory = {
+    // Categories are derived from PuzzleGen.categoryFor() — the single source of truth.
+    // The factory asks the existing system what category a position requires;
+    // it never invents a competing progression table.
+    requestCategory(cycle, level, puzzleNumber) {
+        return PuzzleGen.categoryFor(cycle, level, puzzleNumber);
+    },
+    
+    // Difficulty comes from the existing formula — no second difficulty system.
+    requestDifficulty(cycle, level) {
+        return PuzzleGen.getDifficulty(cycle, level);
+    },
+    
+    // Single public entry point. Receives explicit position inputs (no direct
+    // gameState ownership), returns a validated Phase 8 Puzzle Contract or null.
+    createPuzzle(cycle, level, puzzleNumber) {
+        const category = this.requestCategory(cycle, level, puzzleNumber);
+        const difficulty = this.requestDifficulty(cycle, level);
+        
+        // The existing generatePuzzle() already: routes to the correct builder,
+        // finalizes via finalize(), validates via validate(), retries up to its
+        // existing limit (10), then falls back to the simplest generator (10 more).
+        // The factory reuses that entire pathway rather than duplicating it.
+        const puzzle = PuzzleGen.generatePuzzle(cycle, level, puzzleNumber);
+        
+        // Final contract enforcement at the factory boundary: the factory never
+        // returns a puzzle the Phase 8 validate() rejects. Null-safe by design.
+        if (!puzzle || !PuzzleGen.validate(puzzle)) return null;
+        
+        return puzzle;
+    }
+};
+
 // ===== Game Engine =====
 class PatternQuest {
     constructor() {
@@ -1660,9 +1699,9 @@ class PatternQuest {
             return;
         }
         
-        // Phase 8B: minimal null guard — generatePuzzle() should never return null
-        // thanks to its fallback, but protect the contract dereference below.
-        const puzzle = PuzzleGen.generatePuzzle(c, l, n);
+        // Phase 9: all puzzle requests go through the Puzzle Factory.
+        // Null guard retained: if the factory cannot produce a contract, stop here.
+        const puzzle = PuzzleFactory.createPuzzle(c, l, n);
         if (!puzzle) return;
         gameState.currentPuzzleData = puzzle;
         gameState.currentPuzzleCategory = puzzle.category;
