@@ -971,7 +971,7 @@ body {
                         <h3 class="purchase-title">Purchase Sanity Scraps</h3>
                         <div class="purchase-option">
                             <div class="purchase-info">
-                                <span>🧘 Sanity Scraps</span>
+                                <span>🧘 Sanity Scrap</span>
                                 <span style="color: var(--text-muted);">- Reduces Madness by 10</span>
                             </div>
                             <button class="purchase-btn" id="buy-sanity-btn" data-cost="50">
@@ -1181,7 +1181,7 @@ const PuzzleGen = {
   '◄', '►', '△', '▽', '◁', '▷', '◣', '◢', '◤', '◥',
 
   // Circles & Ovals
-  '○', '◌', '◎', '◉', 
+  '○', '◌', '◎', '◉',
 
   // Squares & Rectangles
   '□', '▢', '▣', '▤', '▥', '▧', '▬', '▮',
@@ -1536,15 +1536,20 @@ const PuzzleGen = {
     
     validate(p) {
         if (!p) return false;
-        if (!p.id || !p.category || !p.difficulty || p.difficulty < 1) return false;
+        if (!p.id || !p.category || !p.difficulty || p.difficulty < 1 || p.difficulty > 6) return false;
+        // Phase 8B: category must be one of the eight known puzzle categories
+        if (!['quantitative', 'spatial', 'logical', 'distribution', 'alternation', 'matrix', 'deduction', 'prediction'].includes(p.category)) return false;
         if (typeof p.question !== 'string' || !p.question.includes('?')) return false;
         if (!Array.isArray(p.options) || p.options.length !== 6) return false;
         if (new Set(p.options).size !== 6) return false; // no duplicate answers
         if (!p.options.includes(p.correctAnswer)) return false;
         if (p.options.filter(o => o === p.correctAnswer).length !== 1) return false; // exactly one correct
-        if (typeof p.correctIndex !== 'number' || p.options[p.correctIndex] !== p.correctAnswer) return false;
+        if (typeof p.correctIndex !== 'number' || p.correctIndex !== p.options.indexOf(p.correctAnswer)) return false;
         if (typeof p.explanation !== 'string' || p.explanation.length < 10) return false;
         if (!Array.isArray(p.ruleTypes) || p.ruleTypes.length < 1 || p.ruleTypes.length > 3) return false;
+        // Phase 8B: meta must carry the position fields used by the puzzle reuse check
+        if (!p.meta || typeof p.meta !== 'object') return false;
+        if (typeof p.meta.cycle !== 'number' || typeof p.meta.level !== 'number' || typeof p.meta.puzzleNumber !== 'number') return false;
         return true;
     },
     
@@ -1655,9 +1660,13 @@ class PatternQuest {
             return;
         }
         
-        gameState.currentPuzzleData = PuzzleGen.generatePuzzle(c, l, n);
-        gameState.currentPuzzleCategory = gameState.currentPuzzleData.category;
-        gameState.currentPuzzleDifficulty = gameState.currentPuzzleData.difficulty;
+        // Phase 8B: minimal null guard — generatePuzzle() should never return null
+        // thanks to its fallback, but protect the contract dereference below.
+        const puzzle = PuzzleGen.generatePuzzle(c, l, n);
+        if (!puzzle) return;
+        gameState.currentPuzzleData = puzzle;
+        gameState.currentPuzzleCategory = puzzle.category;
+        gameState.currentPuzzleDifficulty = puzzle.difficulty;
         this.displayPuzzle();
     }
     
@@ -1919,7 +1928,7 @@ class PatternQuest {
         gameState.madness += CONFIG.madness.wrongAnswer;
         this.applyMadnessFromTime(responseTime);
         
-        console.log(`Wrong! -${coinsLost} Peace Coins, Madness +${CONFIG.madness.wrongAnswer + Math.floor(responseTime * CONFIG.madness.timeMultiplier / 1000)}`);
+        console.log(`Wrong! -${coinsLost} Peace Coins, Madness +${gameState.madness.wrongAnswer + Math.floor(responseTime * CONFIG.madness.timeMultiplier / 1000)}`);
     }
     
     applyMadnessFromTime(elapsedTime) {
