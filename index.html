@@ -1267,6 +1267,31 @@ const PuzzleGen = {
         return chosen;
     },
     
+    // --- Phase 12A: instance-signature duplicate avoidance ---
+    // A signature captures the reasoning-relevant parameters (family + params),
+    // never the rendered glyphs, so two instances with different glyphs but
+    // identical parameters are recognised as the same instance. Lightweight and
+    // in-session only (no persistence). Families that do not expose `params`
+    // bypass the check. If every attempt collides with recent instances the
+    // last generation is returned anyway (never null, never an invalid puzzle).
+    _generateFamily(category, d, families) {
+        const family = this._pickFamily(category, d, families);
+        let raw = null;
+        for (let attempt = 0; attempt < 4; attempt++) {
+            raw = family.generate(d);
+            if (!raw || !raw.params) break;
+            const sig = family.name + ':' + JSON.stringify(raw.params);
+            if (!this._recentSigs) this._recentSigs = {};
+            if (!this._recentSigs[category]) this._recentSigs[category] = [];
+            if (!this._recentSigs[category].includes(sig)) {
+                this._recentSigs[category].push(sig);
+                if (this._recentSigs[category].length > 12) this._recentSigs[category].shift();
+                break;
+            }
+        }
+        return raw;
+    },
+    
     // --- Category 1: Quantitative Change ---
     buildQuantitative(d) {
         // Reasoning families (existing structures preserved, now parametric):
@@ -1284,7 +1309,7 @@ const PuzzleGen = {
                     const distractors = this.uniqueDistractors(g.repeat(answer),
                         [answer - 2, answer - 1, answer + 1, answer + 2, counts[3], answer + 3]
                             .filter(n => n >= 1).map(n => g.repeat(n)));
-                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['quantitative-sequence'] };
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['quantitative-sequence'], params: { start, step } };
                 }
             },
             { // EXISTING family: alternating step sizes (parametric s/p/q)
@@ -1301,7 +1326,7 @@ const PuzzleGen = {
                     const distractors = this.uniqueDistractors(g.repeat(answer),
                         [answer - 2, answer - 1, answer + 1, answer + 2, counts[3], answer + 3]
                             .filter(n => n >= 1).map(n => g.repeat(n)));
-                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['quantitative-sequence', 'alternating-steps'] };
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['quantitative-sequence', 'alternating-steps'], params: { s, p, q } };
                 }
             },
             { // EXISTING family: second-order growth (the growth itself grows)
@@ -1316,21 +1341,42 @@ const PuzzleGen = {
                     const distractors = this.uniqueDistractors(g.repeat(answer),
                         [answer - 2, answer - 1, answer + 1, answer + 2, counts[3], answer + 3]
                             .filter(n => n >= 1).map(n => g.repeat(n)));
-                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['quantitative-sequence', 'second-order'] };
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['quantitative-sequence', 'second-order'], params: { s } };
                 }
             },
             { // NEW family: geometric progression — multiplicative reasoning
                 name: 'geometric', min: 3, max: 5,
                 generate: dd => {
                     const g = this.pick(['▲', '●', '■', '◆']);
-                    const counts = [1, 2, 4, 8];
-                    const answer = 16;
-                    const explain = 'Each group is twice the size of the one before it, so the next group has 16 symbols.';
+                    // Phase 12A: bounded valid parameter set instead of one frozen
+                    // instance. Ratio in {2,3}, length in {3,4}, ascending or
+                    // descending, seed in {1,2,3} — but only combinations whose
+                    // largest rendered group stays <= 32 glyphs are valid.
+                    const combos = [];
+                    for (const rr of [2, 3]) {
+                        for (const ln of [3, 4]) {
+                            for (const sd of [1, 2, 3]) {
+                                if (sd * Math.pow(rr, ln) <= 32) combos.push({ r: rr, len: ln, seed: sd, desc: false });
+                                if (sd * Math.pow(rr, ln + 1) <= 32) combos.push({ r: rr, len: ln, seed: sd, desc: true });
+                            }
+                        }
+                    }
+                    const co = this.pick(combos);
+                    const counts = [];
+                    if (co.desc) {
+                        for (let i = co.len; i >= 1; i--) counts.push(co.seed * Math.pow(co.r, i));
+                    } else {
+                        for (let i = 0; i < co.len; i++) counts.push(co.seed * Math.pow(co.r, i));
+                    }
+                    const answer = co.desc ? co.seed : co.seed * Math.pow(co.r, co.len);
+                    const explain = `Each group is ${co.r} times the size of the ${co.desc ? 'one after it' : 'one before it'}, so the next group has ${answer} symbols.`;
                     const question = counts.map(n => g.repeat(n)).join(this.SEP) + this.SEP + '?';
-                    // Plausible errors: additive misread of the doubling (+8 -> 12), near-misses
+                    // Plausible errors: additive misread (constant-difference extrapolation), near-misses
+                    const linear = counts[counts.length - 1] + (counts[counts.length - 1] - counts[counts.length - 2]);
                     const distractors = this.uniqueDistractors(g.repeat(answer),
-                        [12, 10, 14, 15, 17].map(n => g.repeat(n)));
-                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['geometric-progression'] };
+                        [linear, answer - 1, answer + 1, answer + 2, counts[counts.length - 1]]
+                            .filter(n => n >= 1 && n !== answer).map(n => g.repeat(n)));
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['geometric-progression'], params: { r: co.r, len: co.len, seed: co.seed, desc: co.desc } };
                 }
             },
             { // NEW family: subtractive progression — countdown reasoning
@@ -1346,12 +1392,11 @@ const PuzzleGen = {
                     const distractors = this.uniqueDistractors(g.repeat(answer),
                         [answer - 2, answer - 1, answer + 1, answer + 2, counts[3], answer + 3]
                             .filter(n => n >= 1).map(n => g.repeat(n)));
-                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['subtractive-sequence'] };
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['subtractive-sequence'], params: { start, step } };
                 }
             }
         ];
-        const family = this._pickFamily('quantitative', d, families);
-        return family.generate(d);
+        return this._generateFamily('quantitative', d, families);
     },
     
     // --- Category 2: Spatial Transformation ---
@@ -1374,7 +1419,7 @@ const PuzzleGen = {
                     const ai = ((start + dir * step * 4) % 8 + 8) % 8;
                     const distractors = this.uniqueDistractors(answer,
                         [at(3), at(5), dirs[(ai + 1) % 8], dirs[(ai + 7) % 8], dirs[(ai + 4) % 8]]);
-                    return { question, answer, distractors, explanation: explain, ruleTypes: ['rotation'] };
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['rotation'], params: { start, step, dir } };
                 }
             },
             { // NEW family: glide reflection — flip then turn; a genuinely different
@@ -1391,7 +1436,7 @@ const PuzzleGen = {
                     // Plausible errors: the mirror alone, the rotation alone, neighbours
                     const distractors = this.uniqueDistractors(answer,
                         [seq[3], mirrorLR[answer], rot(answer, 1), rot(answer, -1), rot(answer, 4)]);
-                    return { question, answer, distractors, explanation: explain, ruleTypes: ['reflection', 'rotation'] };
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['reflection', 'rotation'], params: { start, step } };
                 }
             },
             { // NEW family: alternating rotation — the turn size itself alternates
@@ -1412,12 +1457,11 @@ const PuzzleGen = {
                     const explain = `The arrows turn ${s1 * 45}° and then ${s2 * 45}° ${dir === 1 ? 'clockwise' : 'counter-clockwise'}, over and over, so the next arrow is ${answer}.`;
                     const distractors = this.uniqueDistractors(answer,
                         [at(3), at(5), rot(answer, 1), rot(answer, -1), rot(answer, 4)]);
-                    return { question, answer, distractors, explanation: explain, ruleTypes: ['rotation', 'alternating-steps'] };
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['rotation', 'alternating-steps'], params: { s1, s2, dir } };
                 }
             }
         ];
-        const family = this._pickFamily('spatial', d, families);
-        return family.generate(d);
+        return this._generateFamily('spatial', d, families);
     },
     
     // --- Category 3: Logical Operations ---
@@ -1579,18 +1623,24 @@ const PuzzleGen = {
                     const g = this.shuffle(this.shapes);
                     const A = g[0], B = g[1];
                     const block = [A, B, B, A];
-                    const terms = block.concat(block).slice(0, 7); // A B B A A B B
-                    const answer = block[7 % 4]; // next term completes the second block
+                    // Phase 12A: vary the entry phase (which block position the
+                    // sequence starts on) and the cut point (how many terms are
+                    // shown). The underlying ABBA block rule is unchanged.
+                    const phase = this.rand(0, 3);
+                    const shown = this.rand(6, 9);
+                    const rotated = block.slice(phase).concat(block.slice(0, phase));
+                    const terms = [];
+                    for (let i = 0; i < shown; i++) terms.push(rotated[i % 4]);
+                    const answer = rotated[shown % 4];
                     const question = terms.join('  ') + '  ?';
                     // Plausible errors: wrong phase of the block
                     const distractors = this.uniqueDistractors(answer, [A === answer ? B : A, g[2], A + A, B + B]);
-                    const explain = `The block ${A} ${B} ${B} ${A} repeats, so the sequence continues with ${answer}.`;
-                    return { question, answer, distractors, explanation: explain, ruleTypes: ['alternation-block'] };
+                    const explain = `The block ${rotated.join(' ')} repeats, so the sequence continues with ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['alternation-block'], params: { phase, shown } };
                 }
             }
         ];
-        const family = this._pickFamily('alternation', d, families);
-        return family.generate(d);
+        return this._generateFamily('alternation', d, families);
     },
     
     // --- Category 6: Matrix Reasoning (original abstract grids) ---
@@ -1641,20 +1691,33 @@ const PuzzleGen = {
                 name: 'additive-diagonal', min: 3, max: 5,
                 generate: dd => {
                     const g = this.pick(this.shapes);
-                    const cell = (r, c) => g.repeat(r + c + 1);
+                    // Phase 12A: bounded coefficient set — cell(r,c) = s0 + a*r + b*c
+                    // with a,b in {1,2}, s0 in {1..3}, only combinations whose
+                    // bottom-right cell stays <= 9 glyphs are valid.
+                    const combos = [];
+                    for (let a = 1; a <= 2; a++) {
+                        for (let b = 1; b <= 2; b++) {
+                            for (let s0 = 1; s0 <= 3; s0++) {
+                                if (2 * a + 2 * b + s0 <= 9) combos.push({ a, b, s0 });
+                            }
+                        }
+                    }
+                    const co = this.pick(combos);
+                    const cell = (r, c) => g.repeat(co.s0 + co.a * r + co.b * c);
                     const grid = [0, 1, 2].map(r => [0, 1, 2].map(c => cell(r, c)));
                     const answer = cell(2, 2);
                     const rules = ['matrix-additive'];
-                    const explain = `Moving one step right or one step down always adds one symbol, so the bottom-right cell holds five.`;
+                    const explain = `Moving one step right adds ${co.b} symbol${co.b > 1 ? 's' : ''} and one step down adds ${co.a}, so the bottom-right cell holds ${answer.length}.`;
                     // Plausible errors: off-by-one and over-extension of the count
+                    const answ = answer.length;
                     const distractors = this.uniqueDistractors(answer,
-                        [g.repeat(4), g.repeat(3), g.repeat(6), g.repeat(2), g.repeat(7)]);
-                    return { grid, answer, rules, explain, distractors };
+                        [answ - 2, answ - 1, answ + 1, answ + 2, answ + co.a + co.b]
+                            .filter(n => n >= 1).map(n => g.repeat(n)));
+                    return { grid, answer, rules, explain, distractors, params: { a: co.a, b: co.b, s0: co.s0 } };
                 }
             }
         ];
-        const family = this._pickFamily('matrix', d, families);
-        const raw = family.generate(d);
+        const raw = this._generateFamily('matrix', d, families);
         raw.grid[2][2] = '?';
         const question = raw.grid.map(r => r.join(' ')).join('<br>');
         return {
@@ -1713,18 +1776,39 @@ const PuzzleGen = {
                 generate: dd => {
                     const order = this.shuffle(this.shapes).slice(0, 3); // top, middle, bottom
                     const T = order[0], M = order[1], B = order[2];
-                    const clues = `${T} is not in the middle.<br>${T} is not at the bottom.<br>${M} sits above ${B}.`;
-                    const question = clues + `<br>Which symbol is in the middle?`;
-                    const answer = M;
-                    // Plausible errors: the top symbol and the bottom symbol
-                    const distractors = this.uniqueDistractors(answer, [T, B]);
-                    const explain = `${T} can only be at the top, and since ${M} sits above ${B}, ${M} must be in the middle.`;
-                    return { question, answer, distractors, explanation: explain, ruleTypes: ['deduction-negative'] };
+                    // Phase 12A: multiple valid clue templates, each pinning all
+                    // three positions uniquely (no contradictions, no second
+                    // solution), plus a varied queried position.
+                    const template = this.rand(1, 3);
+                    let clues, positions, explainBase, askable;
+                    if (template === 1) {
+                        clues = `${T} is not in the middle.<br>${T} is not at the bottom.<br>${M} sits above ${B}.`;
+                        positions = { top: T, middle: M, bottom: B };
+                        explainBase = `${T} can only be at the top, and since ${M} sits above ${B}`;
+                        askable = ['middle', 'bottom'];
+                    } else if (template === 2) {
+                        clues = `${M} is not at the top.<br>${M} is not at the bottom.<br>${T} sits above ${B}.`;
+                        positions = { top: T, middle: M, bottom: B };
+                        explainBase = `${M} can only be in the middle, and ${T} sits above ${B}`;
+                        askable = ['top', 'middle', 'bottom'];
+                    } else {
+                        clues = `${B} is not at the top.<br>${B} is not in the middle.<br>${T} sits above ${M}.`;
+                        positions = { top: T, middle: M, bottom: B };
+                        explainBase = `${B} can only be at the bottom, and since ${T} sits above ${M}`;
+                        askable = ['top', 'middle'];
+                    }
+                    const pos = this.pick(askable);
+                    const posName = pos === 'middle' ? 'in the middle' : (pos === 'top' ? 'at the top' : 'at the bottom');
+                    const question = clues + `<br>Which symbol is ${posName}?`;
+                    const answer = positions[pos];
+                    // Plausible errors: the two symbols not being asked about
+                    const distractors = this.uniqueDistractors(answer, [T, M, B].filter(s => s !== answer));
+                    const explain = `${explainBase}, so ${answer} is ${posName}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['deduction-negative'], params: { template, pos } };
                 }
             }
         ];
-        const family = this._pickFamily('deduction', d, families);
-        return family.generate(d);
+        return this._generateFamily('deduction', d, families);
     },
     
     // --- Category 8: Prediction ---
@@ -1751,20 +1835,31 @@ const PuzzleGen = {
                 // braided into one line; the solver must separate the two tracks
                 name: 'interleaved-cycles', min: 4, max: 6,
                 generate: dd => {
-                    const c1 = this.shuffle(this.shapes).slice(0, 2);
+                    // Phase 12A: vary the first cycle's length, both cycles' entry
+                    // phases, and the cut point. The underlying braided-cycle
+                    // reasoning is unchanged.
+                    const L1 = this.rand(2, 3);
+                    const c1 = this.shuffle(this.shapes).slice(0, L1);
                     const c2 = this.shuffle(this.shapes.filter(s => !c1.includes(s))).slice(0, 2);
-                    const terms = [c1[0], c2[0], c1[1], c2[1], c1[0], c2[0]];
-                    const answer = c1[1];
+                    const o1 = this.rand(0, L1 - 1);
+                    const o2 = this.rand(0, 1);
+                    const shown = this.rand(5, 7);
+                    const term = i => (i % 2 === 0)
+                        ? c1[(Math.floor(i / 2) + o1) % L1]
+                        : c2[(Math.floor(i / 2) + o2) % 2];
+                    const terms = [];
+                    for (let i = 0; i < shown; i++) terms.push(term(i));
+                    const answer = term(shown);
                     const question = terms.join(this.SEP) + this.SEP + '?';
-                    // Plausible errors: staying on the wrong track or wrong phase
-                    const distractors = this.uniqueDistractors(answer, [c1[0], c2[0], c2[1]]);
-                    const explain = `Two pairs take turns: ${c1[0]} alternates with ${c1[1]} while ${c2[0]} alternates with ${c2[1]} in between. After ${c1[0]} comes ${answer}.`;
-                    return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-interleaved'] };
+                    // Plausible errors: the other track's next term, and wrong-phase symbols
+                    const distractors = this.uniqueDistractors(answer,
+                        [term(shown + 1)].concat([c1, c2].flat().filter(s => s !== answer)));
+                    const explain = `Two cycles are braided together: ${c1.join(' → ')} on the even steps and ${c2.join(' → ')} on the odd steps. The next term continues the ${shown % 2 === 0 ? 'first' : 'second'} cycle: ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-interleaved'], params: { L1, o1, o2, shown } };
                 }
             }
         ];
-        const family = this._pickFamily('prediction', d, families);
-        return family.generate(d);
+        return this._generateFamily('prediction', d, families);
     },
     
     // --- Contract assembly & validation ---
