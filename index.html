@@ -1248,264 +1248,523 @@ const PuzzleGen = {
         return pool[(puzzleNumber + cycle) % pool.length];
     },
     
+    // --- Phase 11: Reasoning Family selection ---
+    // Each build*() is now a dispatcher over REASONING FAMILIES. A family is a
+    // genuinely different reasoning structure — never just different numbers or
+    // shapes. Selection order: filter families whose difficultyRange includes
+    // the requested difficulty, then pick, avoiding an immediate repeat of the
+    // last family used in that category (lightweight, in-session only, no
+    // persistence). Parameters are randomised INSIDE each family, so one family
+    // yields many distinct instances of the same reasoning.
+    _pickFamily(category, d, families) {
+        const valid = families.filter(f => d >= f.min && d <= f.max);
+        if (valid.length === 0) return null;
+        if (valid.length === 1) return valid[0];
+        this._lastFamily = this._lastFamily || {};
+        const nonRepeat = valid.filter(f => f.name !== this._lastFamily[category]);
+        const chosen = this.pick(nonRepeat.length ? nonRepeat : valid);
+        this._lastFamily[category] = chosen.name;
+        return chosen;
+    },
+    
     // --- Category 1: Quantitative Change ---
     buildQuantitative(d) {
-        const g = this.pick(['▲', '●', '■', '◆']);
-        let counts, answer, explain, rules;
-        
-        if (d <= 2) {
-            const start = this.rand(1, 2);
-            const step = this.rand(1, 2);
-            counts = [start, start + step, start + 2 * step, start + 3 * step];
-            answer = start + 4 * step;
-            explain = `Each group grows by ${step} symbol${step > 1 ? 's' : ''} at a time, so the next group has ${answer}.`;
-            rules = ['quantitative-sequence'];
-        } else if (d <= 4) {
-            counts = [1, 2, 4, 5];
-            answer = 7;
-            explain = 'The groups grow by 1, then 2, then 1, then 2 again — the next group has 7 symbols.';
-            rules = ['quantitative-sequence', 'alternating-steps'];
-        } else {
-            counts = [1, 2, 4, 7];
-            answer = 11;
-            explain = 'The growth itself increases: +1, +2, +3, so +4 follows — the next group has 11 symbols.';
-            rules = ['quantitative-sequence', 'second-order'];
-        }
-        
-        const question = counts.map(n => g.repeat(n)).join(this.SEP) + this.SEP + '?';
-        const distractors = this.uniqueDistractors(String(answer),
-            [answer - 2, answer - 1, answer + 1, answer + 2, counts[3], answer + 3]
-                .filter(n => n >= 1).map(n => g.repeat(n)));
-        
-        return {
-            question,
-            answer: g.repeat(answer),
-            distractors,
-            explanation: explain,
-            ruleTypes: rules
-        };
+        // Reasoning families (existing structures preserved, now parametric):
+        const families = [
+            { // EXISTING family: constant-step growth (parametric start/step)
+                name: 'constant-step', min: 1, max: 2,
+                generate: dd => {
+                    const g = this.pick(['▲', '●', '■', '◆']);
+                    const start = this.rand(1, 3);
+                    const step = this.rand(1, 3);
+                    const counts = [start, start + step, start + 2 * step, start + 3 * step];
+                    const answer = start + 4 * step;
+                    const explain = `Each group grows by ${step} symbol${step > 1 ? 's' : ''} at a time, so the next group has ${answer}.`;
+                    const question = counts.map(n => g.repeat(n)).join(this.SEP) + this.SEP + '?';
+                    const distractors = this.uniqueDistractors(g.repeat(answer),
+                        [answer - 2, answer - 1, answer + 1, answer + 2, counts[3], answer + 3]
+                            .filter(n => n >= 1).map(n => g.repeat(n)));
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['quantitative-sequence'] };
+                }
+            },
+            { // EXISTING family: alternating step sizes (parametric s/p/q)
+                name: 'alternating-steps', min: 3, max: 4,
+                generate: dd => {
+                    const g = this.pick(['▲', '●', '■', '◆']);
+                    const s = this.rand(1, 2);
+                    const p = this.rand(1, 2);
+                    const q = this.rand(2, 3);
+                    const counts = [s, s + p, s + p + q, s + 2 * p + q];
+                    const answer = s + 2 * p + 2 * q;
+                    const explain = `The groups grow by ${p}, then ${q}, then ${p}, then ${q} again — the next group has ${answer} symbols.`;
+                    const question = counts.map(n => g.repeat(n)).join(this.SEP) + this.SEP + '?';
+                    const distractors = this.uniqueDistractors(g.repeat(answer),
+                        [answer - 2, answer - 1, answer + 1, answer + 2, counts[3], answer + 3]
+                            .filter(n => n >= 1).map(n => g.repeat(n)));
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['quantitative-sequence', 'alternating-steps'] };
+                }
+            },
+            { // EXISTING family: second-order growth (the growth itself grows)
+                name: 'second-order', min: 5, max: 6,
+                generate: dd => {
+                    const g = this.pick(['▲', '●', '■', '◆']);
+                    const s = this.rand(1, 2);
+                    const counts = [s, s + 1, s + 3, s + 6];
+                    const answer = s + 10;
+                    const explain = `The growth itself increases: +1, +2, +3, so +4 follows — the next group has ${answer} symbols.`;
+                    const question = counts.map(n => g.repeat(n)).join(this.SEP) + this.SEP + '?';
+                    const distractors = this.uniqueDistractors(g.repeat(answer),
+                        [answer - 2, answer - 1, answer + 1, answer + 2, counts[3], answer + 3]
+                            .filter(n => n >= 1).map(n => g.repeat(n)));
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['quantitative-sequence', 'second-order'] };
+                }
+            },
+            { // NEW family: geometric progression — multiplicative reasoning
+                name: 'geometric', min: 3, max: 5,
+                generate: dd => {
+                    const g = this.pick(['▲', '●', '■', '◆']);
+                    const counts = [1, 2, 4, 8];
+                    const answer = 16;
+                    const explain = 'Each group is twice the size of the one before it, so the next group has 16 symbols.';
+                    const question = counts.map(n => g.repeat(n)).join(this.SEP) + this.SEP + '?';
+                    // Plausible errors: additive misread of the doubling (+8 -> 12), near-misses
+                    const distractors = this.uniqueDistractors(g.repeat(answer),
+                        [12, 10, 14, 15, 17].map(n => g.repeat(n)));
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['geometric-progression'] };
+                }
+            },
+            { // NEW family: subtractive progression — countdown reasoning
+                name: 'subtractive', min: 1, max: 3,
+                generate: dd => {
+                    const g = this.pick(['▲', '●', '■', '◆']);
+                    const step = this.rand(2, 3);
+                    const start = step * 5 + this.rand(0, 2); // guarantees a positive answer
+                    const counts = [start, start - step, start - 2 * step, start - 3 * step];
+                    const answer = start - 4 * step;
+                    const explain = `Each group loses ${step} symbol${step > 1 ? 's' : ''} at a time, so the next group has ${answer}.`;
+                    const question = counts.map(n => g.repeat(n)).join(this.SEP) + this.SEP + '?';
+                    const distractors = this.uniqueDistractors(g.repeat(answer),
+                        [answer - 2, answer - 1, answer + 1, answer + 2, counts[3], answer + 3]
+                            .filter(n => n >= 1).map(n => g.repeat(n)));
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['subtractive-sequence'] };
+                }
+            }
+        ];
+        const family = this._pickFamily('quantitative', d, families);
+        return family.generate(d);
     },
     
     // --- Category 2: Spatial Transformation ---
     buildSpatial(d) {
         const dirs = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
-        const step = d <= 2 ? 1 : (d <= 4 ? 2 : 3);
-        const dir = (d >= 5 && Math.random() < 0.5) ? -1 : 1;
-        const start = this.rand(0, 7);
-        const at = i => dirs[((start + dir * step * i) % 8 + 8) % 8];
-        
-        const seq = [at(0), at(1), at(2), at(3)];
-        const answer = at(4);
-        const question = seq.join('  ') + '  ?';
-        const turn = step * 45;
-        const explain = `Each arrow turns ${turn}° ${dir === 1 ? 'clockwise' : 'counter-clockwise'}, so the next arrow is ${answer}.`;
-        
-        const ai = ((start + dir * step * 4) % 8 + 8) % 8;
-        const distractors = this.uniqueDistractors(answer,
-            [at(3), at(5), dirs[(ai + 1) % 8], dirs[(ai + 7) % 8], dirs[(ai + 4) % 8]]);
-        
-        return {
-            question,
-            answer,
-            distractors,
-            explanation: explain,
-            ruleTypes: ['rotation']
-        };
+        const mirrorLR = { '→': '←', '←': '→', '↗': '↙', '↙': '↗', '↘': '↖', '↖': '↘', '↑': '↓', '↓': '↑' };
+        const rot = (a, k) => dirs[(dirs.indexOf(a) + k + 16) % 8];
+        const families = [
+            { // EXISTING family: constant rotation (parametric start/direction/step)
+                name: 'rotation', min: 1, max: 6,
+                generate: dd => {
+                    const step = dd <= 2 ? 1 : (dd <= 4 ? 2 : 3);
+                    const dir = (dd >= 5 && Math.random() < 0.5) ? -1 : 1;
+                    const start = this.rand(0, 7);
+                    const at = i => dirs[((start + dir * step * i) % 8 + 8) % 8];
+                    const seq = [at(0), at(1), at(2), at(3)];
+                    const answer = at(4);
+                    const question = seq.join('  ') + '  ?';
+                    const explain = `Each arrow turns ${step * 45}° ${dir === 1 ? 'clockwise' : 'counter-clockwise'}, so the next arrow is ${answer}.`;
+                    const ai = ((start + dir * step * 4) % 8 + 8) % 8;
+                    const distractors = this.uniqueDistractors(answer,
+                        [at(3), at(5), dirs[(ai + 1) % 8], dirs[(ai + 7) % 8], dirs[(ai + 4) % 8]]);
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['rotation'] };
+                }
+            },
+            { // NEW family: glide reflection — flip then turn; a genuinely different
+                // transformation from pure rotation (reaches arrows rotation cannot)
+                name: 'glide-reflection', min: 2, max: 4,
+                generate: dd => {
+                    const step = dd >= 4 ? 2 : 1;
+                    const T = a => rot(mirrorLR[a], step);
+                    const start = this.pick(dirs);
+                    const seq = [start, T(start), T(T(start)), T(T(T(start)))];
+                    const answer = T(T(T(T(start))));
+                    const question = seq.join('  ') + '  ?';
+                    const explain = `Each arrow is flipped left-to-right, then turned ${step * 45}° clockwise, so the next arrow is ${answer}.`;
+                    // Plausible errors: the mirror alone, the rotation alone, neighbours
+                    const distractors = this.uniqueDistractors(answer,
+                        [seq[3], mirrorLR[answer], rot(answer, 1), rot(answer, -1), rot(answer, 4)]);
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['reflection', 'rotation'] };
+                }
+            },
+            { // NEW family: alternating rotation — the turn size itself alternates
+                name: 'alternating-rotation', min: 3, max: 5,
+                generate: dd => {
+                    const dir = this.rand(0, 1) ? 1 : -1;
+                    const s1 = this.rand(1, 2);
+                    const s2 = this.rand(2, 3);
+                    const start = this.rand(0, 7);
+                    const at = i => {
+                        let k = 0;
+                        for (let s = 0; s < i; s++) k += dir * (s % 2 === 0 ? s1 : s2);
+                        return dirs[((start + k) % 8 + 8) % 8];
+                    };
+                    const seq = [at(0), at(1), at(2), at(3)];
+                    const answer = at(4);
+                    const question = seq.join('  ') + '  ?';
+                    const explain = `The arrows turn ${s1 * 45}° and then ${s2 * 45}° ${dir === 1 ? 'clockwise' : 'counter-clockwise'}, over and over, so the next arrow is ${answer}.`;
+                    const distractors = this.uniqueDistractors(answer,
+                        [at(3), at(5), rot(answer, 1), rot(answer, -1), rot(answer, 4)]);
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['rotation', 'alternating-steps'] };
+                }
+            }
+        ];
+        const family = this._pickFamily('spatial', d, families);
+        return family.generate(d);
     },
     
     // --- Category 3: Logical Operations ---
     buildLogical(d) {
-        const g = this.shuffle(this.shapes).slice(0, 4);
-        let premises, answer, distractors, explain, rules;
-        
-        if (d <= 2) {
-            premises = [`All ${g[0]} are ${g[1]}.`, `All ${g[1]} are ${g[2]}.`];
-            answer = `${g[1]} and ${g[2]}`;
-            distractors = [`${g[1]} only`, `${g[2]} only`, 'none of them', g[3], `${g[2]} and ${g[3]}`];
-            explain = `Every ${g[0]} is a ${g[1]}, and every ${g[1]} is a ${g[2]} — so a ${g[0]} must be both.`;
-            rules = ['logical-inclusion'];
-        } else if (d <= 4) {
-            premises = [`All ${g[0]} are ${g[1]}.`, `All ${g[1]} are ${g[2]}.`, `All ${g[2]} are ${g[3]}.`];
-            answer = `${g[1]}, ${g[2]} and ${g[3]}`;
-            distractors = [`${g[1]} and ${g[2]} only`, `${g[2]} and ${g[3]} only`, `${g[1]} and ${g[3]} only`, 'none of them', g[3]];
-            explain = `The chain runs ${g[0]} → ${g[1]} → ${g[2]} → ${g[3]}, so a ${g[0]} must carry all three labels.`;
-            rules = ['logical-inclusion'];
-        } else {
-            const extra = this.shuffle(this.shapes.filter(s => !g.includes(s))).slice(0, 2);
-            premises = [
-                `All ${g[0]} are ${g[1]}.`,
-                `All ${g[1]} are ${g[2]}.`,
-                `All ${g[2]} are ${g[3]}.`,
-                `All ${extra[0]} are ${extra[1]}.` // irrelevant premise
-            ];
-            answer = `${g[1]}, ${g[2]} and ${g[3]}`;
-            distractors = [`${g[1]} and ${g[2]} only`, `${g[2]} and ${g[3]} only`, `${g[1]}, ${g[2]} and ${extra[1]}`, 'none of them', `${extra[1]} and ${g[3]}`];
-            explain = `Only the ${g[0]} chain matters: ${g[0]} → ${g[1]} → ${g[2]} → ${g[3]}. The ${extra[0]} line is a red herring.`;
-            rules = ['logical-inclusion', 'irrelevant-premise'];
-        }
-        
-        const question = premises.join('<br>') + `<br>What must every ${g[0]} also be?`;
-        
-        return {
-            question,
-            answer,
-            distractors,
-            explanation: explain,
-            ruleTypes: rules
-        };
+        const families = [
+            { // EXISTING family: 2-premise inclusion chain
+                name: 'inclusion-2', min: 1, max: 2,
+                generate: dd => {
+                    const g = this.shuffle(this.shapes).slice(0, 4);
+                    const premises = [`All ${g[0]} are ${g[1]}.`, `All ${g[1]} are ${g[2]}.`];
+                    const answer = `${g[1]} and ${g[2]}`;
+                    const distractors = [`${g[1]} only`, `${g[2]} only`, 'none of them', g[3], `${g[2]} and ${g[3]}`];
+                    const explain = `Every ${g[0]} is a ${g[1]}, and every ${g[1]} is a ${g[2]} — so a ${g[0]} must be both.`;
+                    const question = premises.join('<br>') + `<br>What must every ${g[0]} also be?`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['logical-inclusion'] };
+                }
+            },
+            { // EXISTING family: 3-premise inclusion chain
+                name: 'inclusion-3', min: 3, max: 4,
+                generate: dd => {
+                    const g = this.shuffle(this.shapes).slice(0, 4);
+                    const premises = [`All ${g[0]} are ${g[1]}.`, `All ${g[1]} are ${g[2]}.`, `All ${g[2]} are ${g[3]}.`];
+                    const answer = `${g[1]}, ${g[2]} and ${g[3]}`;
+                    const distractors = [`${g[1]} and ${g[2]} only`, `${g[2]} and ${g[3]} only`, `${g[1]} and ${g[3]} only`, 'none of them', g[3]];
+                    const explain = `The chain runs ${g[0]} → ${g[1]} → ${g[2]} → ${g[3]}, so a ${g[0]} must carry all three labels.`;
+                    const question = premises.join('<br>') + `<br>What must every ${g[0]} also be?`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['logical-inclusion'] };
+                }
+            },
+            { // EXISTING family: inclusion chain with an irrelevant premise
+                name: 'inclusion-noise', min: 5, max: 6,
+                generate: dd => {
+                    const g = this.shuffle(this.shapes).slice(0, 4);
+                    const extra = this.shuffle(this.shapes.filter(s => !g.includes(s))).slice(0, 2);
+                    const premises = [
+                        `All ${g[0]} are ${g[1]}.`, `All ${g[1]} are ${g[2]}.`, `All ${g[2]} are ${g[3]}.`,
+                        `All ${extra[0]} are ${extra[1]}.` // irrelevant premise
+                    ];
+                    const answer = `${g[1]}, ${g[2]} and ${g[3]}`;
+                    const distractors = [`${g[1]} and ${g[2]} only`, `${g[2]} and ${g[3]} only`, `${g[1]}, ${g[2]} and ${extra[1]}`, 'none of them', `${extra[1]} and ${g[3]}`];
+                    const explain = `Only the ${g[0]} chain matters: ${g[0]} → ${g[1]} → ${g[2]} → ${g[3]}. The ${extra[0]} line is a red herring.`;
+                    const question = premises.join('<br>') + `<br>What must every ${g[0]} also be?`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['logical-inclusion', 'irrelevant-premise'] };
+                }
+            },
+            { // NEW family: exclusion — "all" plus "none" premises; the solver must
+                // combine inclusion with a negative constraint (not just chain "all"s)
+                name: 'exclusion', min: 3, max: 5,
+                generate: dd => {
+                    const g = this.shuffle(this.shapes).slice(0, 4);
+                    const premises = [`All ${g[0]} are ${g[1]}.`, `No ${g[1]} is a ${g[2]}.`];
+                    const answer = g[2];
+                    // Plausible errors: the middle term (provably wrong), the subject itself,
+                    // an uninvolved shape (the tempting "unknown" choice)
+                    const distractors = this.uniqueDistractors(answer, [g[1], g[3], g[0]]);
+                    const explain = `Every ${g[0]} is a ${g[1]}, and no ${g[1]} is a ${g[2]} — so a ${g[0]} can never be a ${g[2]}.`;
+                    const question = premises.join('<br>') + `<br>What can a ${g[0]} never be?`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['logical-exclusion'] };
+                }
+            }
+        ];
+        const family = this._pickFamily('logical', d, families);
+        return family.generate(d);
     },
     
     // --- Category 4: Distribution of Attributes ---
     buildDistribution(d) {
-        const k = d <= 3 ? 3 : 4;
-        const set = this.shuffle(this.shapes).slice(0, k);
-        const rows = [this.shuffle(set), this.shuffle(set), this.shuffle(set)];
-        const missingIdx = this.rand(0, k - 1);
-        const answer = rows[2][missingIdx];
-        const given = rows[2].filter((_, i) => i !== missingIdx);
-        
-        const lines = [rows[0].join(' '), rows[1].join(' '), given.join(' ') + '  ?'];
-        const question = lines.join('<br>');
-        const others = set.filter(s => s !== answer);
-        const distractors = this.uniqueDistractors(answer, others);
-        const explain = `Each row contains every symbol exactly once. The bottom row is missing ${answer}.`;
-        
-        return {
-            question,
-            answer,
-            distractors,
-            explanation: explain,
-            ruleTypes: ['distribution']
-        };
+        const families = [
+            { // EXISTING family: row-uniqueness (each ROW holds every symbol once)
+                name: 'row-uniqueness', min: 1, max: 6,
+                generate: dd => {
+                    const k = dd <= 3 ? 3 : 4;
+                    const set = this.shuffle(this.shapes).slice(0, k);
+                    const rows = [this.shuffle(set), this.shuffle(set), this.shuffle(set)];
+                    const missingIdx = this.rand(0, k - 1);
+                    const answer = rows[2][missingIdx];
+                    const given = rows[2].filter((_, i) => i !== missingIdx);
+                    const lines = [rows[0].join(' '), rows[1].join(' '), given.join(' ') + '  ?'];
+                    const question = lines.join('<br>');
+                    const others = set.filter(s => s !== answer);
+                    const distractors = this.uniqueDistractors(answer, others);
+                    const explain = `Each row contains every symbol exactly once. The bottom row is missing ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['distribution'] };
+                }
+            },
+            { // NEW family: column-uniqueness — each COLUMN holds every symbol once;
+                // rows are NOT permutations, so the reasoning is a vertical scan,
+                // genuinely different from the row-based rule
+                name: 'column-uniqueness', min: 2, max: 4,
+                generate: dd => {
+                    const k = 3; // 3 rows per column: the column rule requires a 3-symbol set
+                    const set = this.shuffle(this.shapes).slice(0, k);
+                    const grid = [0, 1, 2].map(() => []);
+                    for (let c = 0; c < k; c++) {
+                        // Each column gets a fresh permutation of the full set
+                        const col = this.shuffle(set);
+                        for (let r = 0; r < 3; r++) grid[r][c] = col[r];
+                    }
+                    const missingCol = this.rand(0, k - 1);
+                    const answer = grid[2][missingCol];
+                    const bottom = grid[2].map((s, c) => c === missingCol ? '?' : s);
+                    const lines = [grid[0].join(' '), grid[1].join(' '), bottom.join(' ')];
+                    const question = lines.join('<br>');
+                    // Plausible errors: symbols already visible in that column
+                    const colShown = [grid[0][missingCol], grid[1][missingCol]];
+                    const distractors = this.uniqueDistractors(answer, colShown);
+                    const explain = `Each column contains every symbol exactly once. The ${missingCol + 1}${missingCol === 0 ? 'st' : (missingCol === 1 ? 'nd' : (missingCol === 2 ? 'rd' : 'th'))} column already shows ${colShown.join(' and ')}, so the missing symbol is ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['distribution-column'] };
+                }
+            }
+        ];
+        const family = this._pickFamily('distribution', d, families);
+        return family.generate(d);
     },
     
     // --- Category 5: Alternation ---
     buildAlternation(d) {
-        const g = this.shuffle(this.shapes);
-        const A = g[0], B = g[1], C = g[2];
-        let question, answer, distractors, explain, rules;
-        
-        if (d <= 2) {
-            question = [A, B, A, B, A].join('  ') + '  ?';
-            answer = B;
-            distractors = this.uniqueDistractors(answer, [A, C, g[3], g[4]]);
-            explain = `The two symbols strictly alternate; after ${A} comes ${B}.`;
-            rules = ['alternation'];
-        } else if (d <= 4) {
-            // Growing sequence interleaved with a constant
-            question = [A, B, A + A, B, A + A + A].join('  ') + '  ?';
-            answer = B;
-            distractors = this.uniqueDistractors(answer, [A, A + A, A + A + A, C, A + B]);
-            explain = `Two patterns share the line: ${B} stays constant while the ${A} groups keep growing. Next comes ${B}.`;
-            rules = ['alternation', 'quantitative-sequence'];
-        } else {
-            // Three interleaved growing sequences
-            question = [A, B, C, A + A, B + B, C + C].join('  ') + '  ?';
-            answer = A + A + A;
-            distractors = this.uniqueDistractors(answer, [B + B + B, C + C + C, A + A, A + A + A + A, B + B]);
-            explain = `The pattern cycles ${A} → ${B} → ${C}, and each round doubles the count. The third round opens with ${answer}.`;
-            rules = ['alternation', 'quantitative-sequence'];
-        }
-        
-        return {
-            question,
-            answer,
-            distractors,
-            explanation: explain,
-            ruleTypes: rules
-        };
+        const families = [
+            { // EXISTING family: strict two-symbol alternation
+                name: 'abab', min: 1, max: 2,
+                generate: dd => {
+                    const g = this.shuffle(this.shapes);
+                    const A = g[0], B = g[1], C = g[2];
+                    const question = [A, B, A, B, A].join('  ') + '  ?';
+                    const answer = B;
+                    const distractors = this.uniqueDistractors(answer, [A, C, g[3], g[4]]);
+                    const explain = `The two symbols strictly alternate; after ${A} comes ${B}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['alternation'] };
+                }
+            },
+            { // EXISTING family: growing sequence interleaved with a constant
+                name: 'growth-interleave', min: 3, max: 4,
+                generate: dd => {
+                    const g = this.shuffle(this.shapes);
+                    const A = g[0], B = g[1], C = g[2];
+                    const question = [A, B, A + A, B, A + A + A].join('  ') + '  ?';
+                    const answer = B;
+                    const distractors = this.uniqueDistractors(answer, [A, A + A, A + A + A, C, A + B]);
+                    const explain = `Two patterns share the line: ${B} stays constant while the ${A} groups keep growing. Next comes ${B}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['alternation', 'quantitative-sequence'] };
+                }
+            },
+            { // EXISTING family: three interleaved growing sequences
+                name: 'triple-growth', min: 5, max: 6,
+                generate: dd => {
+                    const g = this.shuffle(this.shapes);
+                    const A = g[0], B = g[1], C = g[2];
+                    const question = [A, B, C, A + A, B + B, C + C].join('  ') + '  ?';
+                    const answer = A + A + A;
+                    const distractors = this.uniqueDistractors(answer, [B + B + B, C + C + C, A + A, A + A + A + A, B + B]);
+                    const explain = `The pattern cycles ${A} → ${B} → ${C}, and each round doubles the count. The third round opens with ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['alternation', 'quantitative-sequence'] };
+                }
+            },
+            { // NEW family: repeating block ABBA — the unit of alternation is a
+                // 4-symbol block, not a 2-symbol flip; the solver must spot the block
+                name: 'abba-block', min: 2, max: 3,
+                generate: dd => {
+                    const g = this.shuffle(this.shapes);
+                    const A = g[0], B = g[1];
+                    const block = [A, B, B, A];
+                    const terms = block.concat(block).slice(0, 7); // A B B A A B B
+                    const answer = block[7 % 4]; // next term completes the second block
+                    const question = terms.join('  ') + '  ?';
+                    // Plausible errors: wrong phase of the block
+                    const distractors = this.uniqueDistractors(answer, [A === answer ? B : A, g[2], A + A, B + B]);
+                    const explain = `The block ${A} ${B} ${B} ${A} repeats, so the sequence continues with ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['alternation-block'] };
+                }
+            }
+        ];
+        const family = this._pickFamily('alternation', d, families);
+        return family.generate(d);
     },
     
     // --- Category 6: Matrix Reasoning (original abstract grids) ---
     buildMatrix(d) {
-        const sh = this.shuffle(this.shapes).slice(0, 3);
-        let grid, answer, rules, explain;
-        
-        if (d <= 2) {
-            // Single rule: count grows across each row
-            const g = sh[0];
-            grid = [0, 1, 2].map(() => [g, g + g, g + g + g]);
-            answer = g + g + g;
-            rules = ['matrix-count'];
-            explain = `In every row the count grows 1, 2, 3 from left to right, so the missing cell is three ${g}s.`;
-        } else if (d <= 4) {
-            // Shape is constant per row, count grows across
-            grid = [0, 1, 2].map(r => [sh[r], sh[r] + sh[r], sh[r] + sh[r] + sh[r]]);
-            answer = sh[2] + sh[2] + sh[2];
-            rules = ['matrix-count', 'matrix-shape'];
-            explain = `Each row keeps one shape, and the count grows 1, 2, 3 across. The bottom row uses ${sh[2]}, so the answer is three of them.`;
-        } else {
-            // Count grows down, shape is constant per column
-            grid = [0, 1, 2].map(r => [0, 1, 2].map(c => sh[c].repeat(r + 1)));
-            answer = sh[2] + sh[2] + sh[2];
-            rules = ['matrix-count', 'matrix-shape'];
-            explain = `Each column keeps one shape and the count grows 1, 2, 3 down the rows. The missing cell is the ${sh[2]} column's third step: three of them.`;
-        }
-        
-        grid[2][2] = '?';
-        const question = grid.map(r => r.join(' ')).join('<br>');
-        const distractors = this.uniqueDistractors(answer,
-            [sh[2] + sh[2], sh[2], sh[1] + sh[1] + sh[1], sh[0] + sh[0] + sh[0], sh[1] + sh[1]]);
-        
+        const families = [
+            { // EXISTING family: same shape, count grows across each row
+                name: 'count-rows', min: 1, max: 2,
+                generate: dd => {
+                    const sh = this.shuffle(this.shapes).slice(0, 3);
+                    const g = sh[0];
+                    const grid = [0, 1, 2].map(() => [g, g + g, g + g + g]);
+                    const answer = g + g + g;
+                    const rules = ['matrix-count'];
+                    const explain = `In every row the count grows 1, 2, 3 from left to right, so the missing cell is three ${g}s.`;
+                    const distractors = this.uniqueDistractors(answer,
+                        [sh[2] + sh[2], sh[2], sh[1] + sh[1] + sh[1], sh[0] + sh[0] + sh[0], sh[1] + sh[1]]);
+                    return { grid, answer, rules, explain, distractors };
+                }
+            },
+            { // EXISTING family: shape constant per row, count grows across
+                name: 'shape-rows', min: 3, max: 4,
+                generate: dd => {
+                    const sh = this.shuffle(this.shapes).slice(0, 3);
+                    const grid = [0, 1, 2].map(r => [sh[r], sh[r] + sh[r], sh[r] + sh[r] + sh[r]]);
+                    const answer = sh[2] + sh[2] + sh[2];
+                    const rules = ['matrix-count', 'matrix-shape'];
+                    const explain = `Each row keeps one shape, and the count grows 1, 2, 3 across. The bottom row uses ${sh[2]}, so the answer is three of them.`;
+                    const distractors = this.uniqueDistractors(answer,
+                        [sh[2] + sh[2], sh[2], sh[1] + sh[1] + sh[1], sh[0] + sh[0] + sh[0], sh[1] + sh[1]]);
+                    return { grid, answer, rules, explain, distractors };
+                }
+            },
+            { // EXISTING family: count grows down, shape constant per column
+                name: 'shape-columns', min: 5, max: 6,
+                generate: dd => {
+                    const sh = this.shuffle(this.shapes).slice(0, 3);
+                    const grid = [0, 1, 2].map(r => [0, 1, 2].map(c => sh[c].repeat(r + 1)));
+                    const answer = sh[2] + sh[2] + sh[2];
+                    const rules = ['matrix-count', 'matrix-shape'];
+                    const explain = `Each column keeps one shape and the count grows 1, 2, 3 down the rows. The missing cell is the ${sh[2]} column's third step: three of them.`;
+                    const distractors = this.uniqueDistractors(answer,
+                        [sh[2] + sh[2], sh[2], sh[1] + sh[1] + sh[1], sh[0] + sh[0] + sh[0], sh[1] + sh[1]]);
+                    return { grid, answer, rules, explain, distractors };
+                }
+            },
+            { // NEW family: additive diagonal — cell value = row + column position;
+                // the rule is a 2D additive relationship, not a 1-2-3 progression
+                name: 'additive-diagonal', min: 3, max: 5,
+                generate: dd => {
+                    const g = this.pick(this.shapes);
+                    const cell = (r, c) => g.repeat(r + c + 1);
+                    const grid = [0, 1, 2].map(r => [0, 1, 2].map(c => cell(r, c)));
+                    const answer = cell(2, 2);
+                    const rules = ['matrix-additive'];
+                    const explain = `Moving one step right or one step down always adds one symbol, so the bottom-right cell holds five.`;
+                    // Plausible errors: off-by-one and over-extension of the count
+                    const distractors = this.uniqueDistractors(answer,
+                        [g.repeat(4), g.repeat(3), g.repeat(6), g.repeat(2), g.repeat(7)]);
+                    return { grid, answer, rules, explain, distractors };
+                }
+            }
+        ];
+        const family = this._pickFamily('matrix', d, families);
+        const raw = family.generate(d);
+        raw.grid[2][2] = '?';
+        const question = raw.grid.map(r => r.join(' ')).join('<br>');
         return {
             question,
-            answer,
-            distractors,
-            explanation: explain,
-            ruleTypes: rules
+            answer: raw.answer,
+            distractors: raw.distractors,
+            explanation: raw.explain,
+            ruleTypes: raw.rules
         };
     },
     
     // --- Category 7: Deduction ---
     buildDeduction(d) {
-        const n = d <= 3 ? 3 : 4;
-        const order = this.shuffle(this.shapes).slice(0, n); // top to bottom
-        let cluePairs = [];
-        for (let i = 0; i < n - 1; i++) cluePairs.push([order[i], order[i + 1]]);
-        // Higher difficulty: clues are presented out of order
-        if (d >= 4) cluePairs = this.shuffle(cluePairs);
-        
-        const clues = cluePairs.map(p => `${p[0]} sits above ${p[1]}.`).join('<br>');
-        const target = n === 3 ? 1 : this.rand(1, 2);
-        const posName = n === 3 ? 'in the middle' : (target === 1 ? 'second from the top' : 'third from the top');
-        const question = clues + `<br>Which symbol is ${posName}?`;
-        const answer = order[target];
-        const distractors = this.uniqueDistractors(answer, order.filter(s => s !== answer));
-        const chain = order.join(' → ');
-        const explain = `The clues stack the symbols: ${chain}. So ${answer} is ${posName}.`;
-        
-        return {
-            question,
-            answer,
-            distractors,
-            explanation: explain,
-            ruleTypes: ['deduction-order']
-        };
+        const families = [
+            { // EXISTING family: ordered clue chain
+                name: 'ordered-chain', min: 1, max: 3,
+                generate: dd => {
+                    const n = 3;
+                    const order = this.shuffle(this.shapes).slice(0, n); // top to bottom
+                    let cluePairs = [];
+                    for (let i = 0; i < n - 1; i++) cluePairs.push([order[i], order[i + 1]]);
+                    const clues = cluePairs.map(p => `${p[0]} sits above ${p[1]}.`).join('<br>');
+                    const target = 1;
+                    const posName = 'in the middle';
+                    const question = clues + `<br>Which symbol is ${posName}?`;
+                    const answer = order[target];
+                    const distractors = this.uniqueDistractors(answer, order.filter(s => s !== answer));
+                    const chain = order.join(' → ');
+                    const explain = `The clues stack the symbols: ${chain}. So ${answer} is ${posName}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['deduction-order'] };
+                }
+            },
+            { // EXISTING family: shuffled clue chain (4 items, clues out of order)
+                name: 'shuffled-chain', min: 4, max: 6,
+                generate: dd => {
+                    const n = 4;
+                    const order = this.shuffle(this.shapes).slice(0, n); // top to bottom
+                    let cluePairs = [];
+                    for (let i = 0; i < n - 1; i++) cluePairs.push([order[i], order[i + 1]]);
+                    cluePairs = this.shuffle(cluePairs); // clues presented out of order
+                    const clues = cluePairs.map(p => `${p[0]} sits above ${p[1]}.`).join('<br>');
+                    const target = this.rand(1, 2);
+                    const posName = target === 1 ? 'second from the top' : 'third from the top';
+                    const question = clues + `<br>Which symbol is ${posName}?`;
+                    const answer = order[target];
+                    const distractors = this.uniqueDistractors(answer, order.filter(s => s !== answer));
+                    const chain = order.join(' → ');
+                    const explain = `The clues stack the symbols: ${chain}. So ${answer} is ${posName}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['deduction-order'] };
+                }
+            },
+            { // NEW family: negative elimination — position derived from what is
+                // NOT possible plus one positive relation; reasoning by elimination
+                // rather than by chaining positive clues
+                name: 'negative-elimination', min: 4, max: 5,
+                generate: dd => {
+                    const order = this.shuffle(this.shapes).slice(0, 3); // top, middle, bottom
+                    const T = order[0], M = order[1], B = order[2];
+                    const clues = `${T} is not in the middle.<br>${T} is not at the bottom.<br>${M} sits above ${B}.`;
+                    const question = clues + `<br>Which symbol is in the middle?`;
+                    const answer = M;
+                    // Plausible errors: the top symbol and the bottom symbol
+                    const distractors = this.uniqueDistractors(answer, [T, B]);
+                    const explain = `${T} can only be at the top, and since ${M} sits above ${B}, ${M} must be in the middle.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['deduction-negative'] };
+                }
+            }
+        ];
+        const family = this._pickFamily('deduction', d, families);
+        return family.generate(d);
     },
     
     // --- Category 8: Prediction ---
     buildPrediction(d) {
-        const k = d <= 2 ? 2 : (d <= 4 ? 3 : 4);
-        const cyc = this.shuffle(this.shapes).slice(0, k);
-        // Higher difficulty: longer cycle AND starting mid-cycle (harder to spot)
-        const offset = d >= 5 ? this.rand(1, k - 1) : 0;
-        const shown = 2 * k + 1;
-        
-        const terms = [];
-        for (let i = 0; i < shown; i++) terms.push(cyc[(offset + i) % k]);
-        const answer = cyc[(offset + shown) % k];
-        
-        const question = terms.join(this.SEP) + this.SEP + '?';
-        const explain = `The symbols repeat in a cycle of ${k}: ${cyc.join(' → ')}. The sequence continues with ${answer}.`;
-        const distractors = this.uniqueDistractors(answer, cyc.filter(s => s !== answer));
-        
-        return {
-            question,
-            answer,
-            distractors,
-            explanation: explain,
-            ruleTypes: ['prediction-cycle']
-        };
+        const families = [
+            { // EXISTING family: repeating symbol cycle
+                name: 'cycle', min: 1, max: 6,
+                generate: dd => {
+                    const k = dd <= 2 ? 2 : (dd <= 4 ? 3 : 4);
+                    const cyc = this.shuffle(this.shapes).slice(0, k);
+                    // Higher difficulty: longer cycle AND starting mid-cycle (harder to spot)
+                    const offset = dd >= 5 ? this.rand(1, k - 1) : 0;
+                    const shown = 2 * k + 1;
+                    const terms = [];
+                    for (let i = 0; i < shown; i++) terms.push(cyc[(offset + i) % k]);
+                    const answer = cyc[(offset + shown) % k];
+                    const question = terms.join(this.SEP) + this.SEP + '?';
+                    const explain = `The symbols repeat in a cycle of ${k}: ${cyc.join(' → ')}. The sequence continues with ${answer}.`;
+                    const distractors = this.uniqueDistractors(answer, cyc.filter(s => s !== answer));
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-cycle'] };
+                }
+            },
+            { // NEW family: interleaved cycles — two independent alternations
+                // braided into one line; the solver must separate the two tracks
+                name: 'interleaved-cycles', min: 4, max: 6,
+                generate: dd => {
+                    const c1 = this.shuffle(this.shapes).slice(0, 2);
+                    const c2 = this.shuffle(this.shapes.filter(s => !c1.includes(s))).slice(0, 2);
+                    const terms = [c1[0], c2[0], c1[1], c2[1], c1[0], c2[0]];
+                    const answer = c1[1];
+                    const question = terms.join(this.SEP) + this.SEP + '?';
+                    // Plausible errors: staying on the wrong track or wrong phase
+                    const distractors = this.uniqueDistractors(answer, [c1[0], c2[0], c2[1]]);
+                    const explain = `Two pairs take turns: ${c1[0]} alternates with ${c1[1]} while ${c2[0]} alternates with ${c2[1]} in between. After ${c1[0]} comes ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-interleaved'] };
+                }
+            }
+        ];
+        const family = this._pickFamily('prediction', d, families);
+        return family.generate(d);
     },
     
     // --- Contract assembly & validation ---
@@ -1659,7 +1918,17 @@ const DifficultyModel = {
         'matrix-count': 2,           // count progression across a grid
         'matrix-shape': 3,           // second feature must also be tracked
         'deduction-order': 3,        // ordering chain across clues
-        'prediction-cycle': 2        // repeating cycle identification
+        'prediction-cycle': 2,       // repeating cycle identification
+        // Phase 11 families:
+        'geometric-progression': 3,  // multiplicative rule: ratio must be inferred
+        'subtractive-sequence': 2,   // constant-step decrease: simple derived rule
+        'logical-exclusion': 3,      // inclusion + negative constraint combined
+        'distribution-column': 2,    // one-symbol-per-column constraint
+        'alternation-block': 2,      // repeating multi-symbol block
+        'matrix-additive': 3,        // 2D additive cell relationship
+        'deduction-negative': 4,     // elimination from negative constraints
+        'prediction-interleaved': 3, // two braided cycles must be separated
+        'reflection': 2              // mirror transform (glide-reflection family)
     },
     
     // Rule pairs that genuinely INTERACT while solving (must be combined,
@@ -1669,7 +1938,10 @@ const DifficultyModel = {
         ['quantitative-sequence', 'alternating-steps'],
         ['quantitative-sequence', 'second-order'],
         ['matrix-count', 'matrix-shape'],
-        ['quantitative-sequence', 'distribution']
+        ['quantitative-sequence', 'distribution'],
+        // Phase 11 families:
+        ['reflection', 'rotation'],           // glide reflection composes both transforms
+        ['rotation', 'alternating-steps']     // alternating rotation combines the two rules
     ],
     // Rule pairs that co-occur but do NOT interact (solved independently).
     NON_INTERACTING_PAIRS: [
@@ -1744,6 +2016,9 @@ const DifficultyModel = {
             if (clueCount >= 3) steps += 1;
         }
         if (p.ruleTypes.includes('matrix-shape') && p.ruleTypes.includes('matrix-count')) steps += 1; // two features to verify
+        if (p.ruleTypes.includes('deduction-negative')) steps += 1; // elimination is an extra reasoning step
+        if (p.ruleTypes.includes('prediction-interleaved')) steps += 1; // two tracks must be separated
+        if (p.ruleTypes.includes('logical-exclusion')) steps += 1; // negative constraint is an extra step
         return Math.max(1, Math.min(5, steps));
     },
     
