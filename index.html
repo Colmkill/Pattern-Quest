@@ -1348,35 +1348,80 @@ const PuzzleGen = {
                 name: 'geometric', min: 3, max: 5,
                 generate: dd => {
                     const g = this.pick(['▲', '●', '■', '◆']);
-                    // Phase 12A: bounded valid parameter set instead of one frozen
-                    // instance. Ratio in {2,3}, length in {3,4}, ascending or
-                    // descending, seed in {1,2,3} — but only combinations whose
-                    // largest rendered group stays <= 32 glyphs are valid.
-                    const combos = [];
-                    for (const rr of [2, 3]) {
-                        for (const ln of [3, 4]) {
-                            for (const sd of [1, 2, 3]) {
-                                if (sd * Math.pow(rr, ln) <= 32) combos.push({ r: rr, len: ln, seed: sd, desc: false });
-                                if (sd * Math.pow(rr, ln + 1) <= 32) combos.push({ r: rr, len: ln, seed: sd, desc: true });
+                    // Phase 12B: explicit structure registry. Each structure is a
+                    // genuinely different multiplicative relationship, not a new
+                    // parameterisation of the same one. Selection is uniform over
+                    // the structures valid at this difficulty (so a structure with
+                    // more parameter combinations cannot dominate), avoiding an
+                    // immediate repeat via the in-session _lastStruct mechanism.
+                    const structs = [
+                        { name: 'constant-ratio', min: 3, max: 5 },   // Phase 12A: ratio r, len, seed, asc/desc (9 combos)
+                        { name: 'plateau-ratio', min: 3, max: 5 },     // the ratio applies on every SECOND step
+                        { name: 'increasing-ratio', min: 4, max: 5 },  // the ratio itself grows (×2, ×3, ×4 …)
+                        { name: 'alternating-ratio', min: 4, max: 5 }  // the ratio alternates (×2, ×3, ×2 …)
+                    ].filter(s => dd >= s.min && dd <= s.max);
+                    this._lastStruct = this._lastStruct || {};
+                    let pool = structs.filter(s => s.name !== this._lastStruct['geometric']);
+                    if (pool.length === 0) pool = structs;
+                    const st = this.pick(pool);
+                    this._lastStruct['geometric'] = st.name;
+                    let counts = [], answer = 0, explain = '', p = {};
+                    if (st.name === 'constant-ratio') {
+                        // Phase 12A space: ratio in {2,3}, len in {3,4}, seed in {1,2,3},
+                        // asc/desc — only combos whose largest group stays <= 32 glyphs.
+                        const combos = [];
+                        for (const rr of [2, 3]) {
+                            for (const ln of [3, 4]) {
+                                for (const sd of [1, 2, 3]) {
+                                    if (sd * Math.pow(rr, ln) <= 32) combos.push({ r: rr, len: ln, seed: sd, desc: false });
+                                    if (sd * Math.pow(rr, ln + 1) <= 32) combos.push({ r: rr, len: ln, seed: sd, desc: true });
+                                }
                             }
                         }
-                    }
-                    const co = this.pick(combos);
-                    const counts = [];
-                    if (co.desc) {
-                        for (let i = co.len; i >= 1; i--) counts.push(co.seed * Math.pow(co.r, i));
+                        const co = this.pick(combos);
+                        if (co.desc) {
+                            for (let i = co.len; i >= 1; i--) counts.push(co.seed * Math.pow(co.r, i));
+                        } else {
+                            for (let i = 0; i < co.len; i++) counts.push(co.seed * Math.pow(co.r, i));
+                        }
+                        answer = co.desc ? co.seed : co.seed * Math.pow(co.r, co.len);
+                        explain = `Each group is ${co.r} times the size of the ${co.desc ? 'one after it' : 'one before it'}, so the next group has ${answer} symbols.`;
+                        p = { r: co.r, len: co.len, seed: co.seed, desc: co.desc };
+                    } else if (st.name === 'plateau-ratio') {
+                        // Structure: the ratio applies on every second step, so each
+                        // count appears twice: s, s, s·r, s·r, s·r² — the answer is
+                        // the second member of the next pair. Bounded: answer <= 32.
+                        const combos = [];
+                        for (const sd of [1, 2, 3]) for (const rr of [2, 3]) {
+                            if (sd * Math.pow(rr, 3) <= 32) combos.push({ seed: sd, r: rr });
+                        }
+                        const co = this.pick(combos);
+                        for (let i = 0; i < 6; i++) counts.push(co.seed * Math.pow(co.r, Math.floor(i / 2)));
+                        answer = co.seed * Math.pow(co.r, 3); // the fourth pair begins
+                        explain = `Each group appears twice, and each pair is ${co.r} times the pair before it, so the next group has ${answer} symbols.`;;
+                        p = { seed: co.seed, r: co.r };
+                    } else if (st.name === 'increasing-ratio') {
+                        // Structure: the ratio itself grows — ×2, then ×3, then ×4.
+                        // Only the single bounded instance stays <= 32 glyphs.
+                        counts = [1, 2, 6];
+                        answer = 24;
+                        explain = `Each group is a bigger multiple of the last: ×2, then ×3, then ×4 — so the next group has ${answer} symbols.`;
+                        p = {};
                     } else {
-                        for (let i = 0; i < co.len; i++) counts.push(co.seed * Math.pow(co.r, i));
+                        // Structure: the ratio alternates — ×2, then ×3, then ×2 again.
+                        const sd = this.pick([1, 2]);
+                        counts = [sd, sd * 2, sd * 6];
+                        answer = sd * 12;
+                        explain = `The groups grow by alternating multiples — ×2, then ×3, then ×2 again — so the next group has ${answer} symbols.`;
+                        p = { seed: sd };
                     }
-                    const answer = co.desc ? co.seed : co.seed * Math.pow(co.r, co.len);
-                    const explain = `Each group is ${co.r} times the size of the ${co.desc ? 'one after it' : 'one before it'}, so the next group has ${answer} symbols.`;
                     const question = counts.map(n => g.repeat(n)).join(this.SEP) + this.SEP + '?';
                     // Plausible errors: additive misread (constant-difference extrapolation), near-misses
                     const linear = counts[counts.length - 1] + (counts[counts.length - 1] - counts[counts.length - 2]);
                     const distractors = this.uniqueDistractors(g.repeat(answer),
                         [linear, answer - 1, answer + 1, answer + 2, counts[counts.length - 1]]
                             .filter(n => n >= 1 && n !== answer).map(n => g.repeat(n)));
-                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['geometric-progression'], params: { r: co.r, len: co.len, seed: co.seed, desc: co.desc } };
+                    return { question, answer: g.repeat(answer), distractors, explanation: explain, ruleTypes: ['geometric-progression'], params: { structure: st.name, ...p } };
                 }
             },
             { // NEW family: subtractive progression — countdown reasoning
@@ -1408,18 +1453,50 @@ const PuzzleGen = {
             { // EXISTING family: constant rotation (parametric start/direction/step)
                 name: 'rotation', min: 1, max: 6,
                 generate: dd => {
-                    const step = dd <= 2 ? 1 : (dd <= 4 ? 2 : 3);
-                    const dir = (dd >= 5 && Math.random() < 0.5) ? -1 : 1;
+                    // Phase 12B: explicit structure registry. Three genuinely
+                    // different rotation relationships. Reversed-direction variants
+                    // are reflection-equivalent and deliberately NOT separate
+                    // structures (canonical normalisation removes them).
+                    const structs = [
+                        { name: 'constant', min: 1, max: 6 },        // same turn every step (Phase 12A)
+                        { name: 'direction-flip', min: 2, max: 4 },  // turn alternates cw / ccw with unequal sizes
+                        { name: 'accelerating', min: 4, max: 6 }     // the turn itself grows every step
+                    ].filter(s => dd >= s.min && dd <= s.max);
+                    this._lastStruct = this._lastStruct || {};
+                    let pool = structs.filter(s => s.name !== this._lastStruct['rotation']);
+                    if (pool.length === 0) pool = structs;
+                    const st = this.pick(pool);
+                    this._lastStruct['rotation'] = st.name;
                     const start = this.rand(0, 7);
-                    const at = i => dirs[((start + dir * step * i) % 8 + 8) % 8];
+                    let at, explain, ruleTypes, p = {};
+                    if (st.name === 'constant') {
+                        const step = dd <= 2 ? 1 : (dd <= 4 ? 2 : 3);
+                        const dir = (dd >= 5 && Math.random() < 0.5) ? -1 : 1;
+                        at = i => dirs[((start + dir * step * i) % 8 + 8) % 8];
+                        explain = `Each arrow turns ${step * 45}° ${dir === 1 ? 'clockwise' : 'counter-clockwise'}, so the next arrow is ${at(4)}.`;
+                        ruleTypes = ['rotation'];
+                        p = { step, dir };
+                    } else if (st.name === 'direction-flip') {
+                        // Structure: the turn alternates — +90° clockwise, then
+                        // −45° back, over and over. Deterministic and unique: the
+                        // deltas shown are +2, −1, +2, so the next delta is −1.
+                        at = i => { let k = 0; for (let s = 1; s <= i; s++) k += (s % 2 === 1 ? 2 : -1); return dirs[((start + k) % 8 + 8) % 8]; };
+                        explain = `The arrows turn 90° clockwise, then 45° back the other way, over and over, so the next arrow is ${at(4)}.`;
+                        ruleTypes = ['rotation', 'alternating-steps'];
+                    } else {
+                        // Structure: the turn grows each step — 45°, 90°, 135°,
+                        // 180° … a second-order transformation.
+                        at = i => dirs[((start + i * (i + 1) / 2) % 8 + 8) % 8];
+                        explain = `Each turn is 45° bigger than the last — 45°, then 90°, then 135° — so the next arrow is ${at(4)}.`;
+                        ruleTypes = ['rotation', 'second-order'];
+                    }
                     const seq = [at(0), at(1), at(2), at(3)];
                     const answer = at(4);
                     const question = seq.join('  ') + '  ?';
-                    const explain = `Each arrow turns ${step * 45}° ${dir === 1 ? 'clockwise' : 'counter-clockwise'}, so the next arrow is ${answer}.`;
-                    const ai = ((start + dir * step * 4) % 8 + 8) % 8;
+                    // Plausible errors: neighbours, opposite, adjacent missteps
                     const distractors = this.uniqueDistractors(answer,
-                        [at(3), at(5), dirs[(ai + 1) % 8], dirs[(ai + 7) % 8], dirs[(ai + 4) % 8]]);
-                    return { question, answer, distractors, explanation: explain, ruleTypes: ['rotation'], params: { start, step, dir } };
+                        [at(3), at(5), rot(answer, 1), rot(answer, -1), rot(answer, 4)]);
+                    return { question, answer, distractors, explanation: explain, ruleTypes, params: { structure: st.name, start, ...p } };
                 }
             },
             { // NEW family: glide reflection — flip then turn; a genuinely different
@@ -1621,22 +1698,40 @@ const PuzzleGen = {
                 name: 'abba-block', min: 2, max: 3,
                 generate: dd => {
                     const g = this.shuffle(this.shapes);
-                    const A = g[0], B = g[1];
-                    const block = [A, B, B, A];
-                    // Phase 12A: vary the entry phase (which block position the
-                    // sequence starts on) and the cut point (how many terms are
-                    // shown). The underlying ABBA block rule is unchanged.
-                    const phase = this.rand(0, 3);
+                    const A = g[0], B = g[1], C = g[2];
+                    // Phase 12B: explicit structure registry — three block classes
+                    // with genuinely different position relationships. Verified
+                    // non-equivalent under rotation and glyph renaming (their
+                    // canonical minimal rotations are AABB, AABCCB and AABBCC):
+                    //   abba          — paired ends on a 4-block
+                    //   palindrome-6  — full 6-palindrome ABCCBA
+                    //   paired-6      — shifted pairs on a 6-block ABBCCA
+                    // A plain AABB block is a rotation of ABBA (same class) and is
+                    // therefore NOT a separate structure.
+                    const blocks = [
+                        { name: 'abba', seq: [A, B, B, A] },
+                        { name: 'palindrome-6', seq: [A, B, C, C, B, A] },
+                        { name: 'paired-6', seq: [A, B, B, C, C, A] }
+                    ];
+                    this._lastStruct = this._lastStruct || {};
+                    let pool = blocks.filter(b => b.name !== this._lastStruct['abba-block']);
+                    if (pool.length === 0) pool = blocks;
+                    const st = this.pick(pool);
+                    this._lastStruct['abba-block'] = st.name;
+                    const L = st.seq.length;
+                    // Phase 12A params remain: entry phase and cut point.
+                    const phase = this.rand(0, L - 1);
                     const shown = this.rand(6, 9);
-                    const rotated = block.slice(phase).concat(block.slice(0, phase));
+                    const rotated = st.seq.slice(phase).concat(st.seq.slice(0, phase));
                     const terms = [];
-                    for (let i = 0; i < shown; i++) terms.push(rotated[i % 4]);
-                    const answer = rotated[shown % 4];
+                    for (let i = 0; i < shown; i++) terms.push(rotated[i % L]);
+                    const answer = rotated[shown % L];
                     const question = terms.join('  ') + '  ?';
-                    // Plausible errors: wrong phase of the block
-                    const distractors = this.uniqueDistractors(answer, [A === answer ? B : A, g[2], A + A, B + B]);
+                    // Plausible errors: other symbols of the block, wrong-phase pick
+                    const distractors = this.uniqueDistractors(answer,
+                        rotated.filter(s => s !== answer).concat([g[3], A + A]));
                     const explain = `The block ${rotated.join(' ')} repeats, so the sequence continues with ${answer}.`;
-                    return { question, answer, distractors, explanation: explain, ruleTypes: ['alternation-block'], params: { phase, shown } };
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['alternation-block'], params: { structure: st.name, phase, shown } };
                 }
             }
         ];
@@ -1691,29 +1786,63 @@ const PuzzleGen = {
                 name: 'additive-diagonal', min: 3, max: 5,
                 generate: dd => {
                     const g = this.pick(this.shapes);
-                    // Phase 12A: bounded coefficient set — cell(r,c) = s0 + a*r + b*c
-                    // with a,b in {1,2}, s0 in {1..3}, only combinations whose
-                    // bottom-right cell stays <= 9 glyphs are valid.
-                    const combos = [];
-                    for (let a = 1; a <= 2; a++) {
-                        for (let b = 1; b <= 2; b++) {
-                            for (let s0 = 1; s0 <= 3; s0++) {
-                                if (2 * a + 2 * b + s0 <= 9) combos.push({ a, b, s0 });
+                    // Phase 12B: explicit structure registry — four genuinely
+                    // different 2D cell relationships, each constructed rule-first
+                    // and rendered second:
+                    //   linear-additive   — s0 + a·r + b·c (Phase 12A, 10 combos)
+                    //   product-grid      — cell = (row+1) × (column+1)
+                    //   max-stripe        — cell = s0 + k·max(r,c): constant along
+                    //                      L-shaped fronts, not along rows/columns
+                    //   row-varying-step  — the column step itself grows down rows
+                    // Anti-diagonal variants are horizontal reflections of these
+                    // and are NOT counted as separate structures.
+                    const structs = ['linear-additive', 'product-grid', 'max-stripe', 'row-varying-step'];
+                    this._lastStruct = this._lastStruct || {};
+                    let pool = structs.filter(s => s !== this._lastStruct['additive-diagonal']);
+                    const st = this.pick(pool);
+                    this._lastStruct['additive-diagonal'] = st;
+                    let cell, explain, p = {};
+                    if (st === 'linear-additive') {
+                        const combos = [];
+                        for (let a = 1; a <= 2; a++) {
+                            for (let b = 1; b <= 2; b++) {
+                                for (let s0 = 1; s0 <= 3; s0++) {
+                                    if (2 * a + 2 * b + s0 <= 9) combos.push({ a, b, s0 });
+                                }
                             }
                         }
+                        const co = this.pick(combos);
+                        cell = (r, c) => co.s0 + co.a * r + co.b * c;
+                        explain = `Moving one step right adds ${co.b} symbol${co.b > 1 ? 's' : ''} and one step down adds ${co.a}, so the bottom-right cell holds ${cell(2, 2)}.`;
+                        p = { a: co.a, b: co.b, s0: co.s0 };
+                    } else if (st === 'product-grid') {
+                        cell = (r, c) => (r + 1) * (c + 1);
+                        explain = `Each cell holds its row number times its column number, so the bottom-right cell holds ${cell(2, 2)}.`;
+                    } else if (st === 'max-stripe') {
+                        const s0 = this.rand(1, 2), k = this.rand(1, 2);
+                        cell = (r, c) => s0 + k * Math.max(r, c);
+                        explain = `Each cell grows with the larger of its row and column position, so the bottom-right cell holds ${cell(2, 2)}.`;
+                        p = { s0, k };
+                    } else {
+                        // Phase 12B fix: the first draft used s0 + r + (r+1)·c,
+                        // which algebraically equals the product grid (r+1)(c+1)
+                        // — an equivalence caught by structure testing. The base
+                        // column must stay CONSTANT so the structure is genuinely
+                        // different: only the rightward step grows down the rows.
+                        const s0 = 2;
+                        cell = (r, c) => s0 + (r + 1) * c; // column step grows down the rows: 1, 2, 3
+                        explain = `The first column never changes, but each row grows left to right, and the growth step is one bigger in every row, so the bottom-right cell holds ${cell(2, 2)}.`;
+                        p = { s0 };
                     }
-                    const co = this.pick(combos);
-                    const cell = (r, c) => g.repeat(co.s0 + co.a * r + co.b * c);
-                    const grid = [0, 1, 2].map(r => [0, 1, 2].map(c => cell(r, c)));
-                    const answer = cell(2, 2);
+                    const grid = [0, 1, 2].map(r => [0, 1, 2].map(c => g.repeat(cell(r, c))));
+                    const answer = g.repeat(cell(2, 2));
                     const rules = ['matrix-additive'];
-                    const explain = `Moving one step right adds ${co.b} symbol${co.b > 1 ? 's' : ''} and one step down adds ${co.a}, so the bottom-right cell holds ${answer.length}.`;
                     // Plausible errors: off-by-one and over-extension of the count
                     const answ = answer.length;
                     const distractors = this.uniqueDistractors(answer,
-                        [answ - 2, answ - 1, answ + 1, answ + 2, answ + co.a + co.b]
-                            .filter(n => n >= 1).map(n => g.repeat(n)));
-                    return { grid, answer, rules, explain, distractors, params: { a: co.a, b: co.b, s0: co.s0 } };
+                        [answ - 2, answ - 1, answ + 1, answ + 2, answ + 3]
+                            .filter(n => n >= 1 && n <= 12).map(n => g.repeat(n)));
+                    return { grid, answer, rules, explain, distractors, params: { structure: st, ...p } };
                 }
             }
         ];
@@ -1779,7 +1908,15 @@ const PuzzleGen = {
                     // Phase 12A: multiple valid clue templates, each pinning all
                     // three positions uniquely (no contradictions, no second
                     // solution), plus a varied queried position.
-                    const template = this.rand(1, 3);
+                    // Phase 12B: templates 4 and 5 add genuinely different
+                    // elimination structures — two negative clues distributed over
+                    // TWO different symbols (the Phase 12A templates give both
+                    // negatives to one symbol):
+                    //   1,3: one symbol excluded from two positions (mirror pair)
+                    //   2:   middle-pinning by paired exclusion
+                    //   4:   top-pinning: two symbols excluded from the top
+                    //   5:   middle-pinning: two symbols excluded from the middle
+                    const template = this.rand(1, 5);
                     let clues, positions, explainBase, askable;
                     if (template === 1) {
                         clues = `${T} is not in the middle.<br>${T} is not at the bottom.<br>${M} sits above ${B}.`;
@@ -1791,11 +1928,25 @@ const PuzzleGen = {
                         positions = { top: T, middle: M, bottom: B };
                         explainBase = `${M} can only be in the middle, and ${T} sits above ${B}`;
                         askable = ['top', 'middle', 'bottom'];
-                    } else {
+                    } else if (template === 3) {
                         clues = `${B} is not at the top.<br>${B} is not in the middle.<br>${T} sits above ${M}.`;
                         positions = { top: T, middle: M, bottom: B };
                         explainBase = `${B} can only be at the bottom, and since ${T} sits above ${M}`;
                         askable = ['top', 'middle'];
+                    } else if (template === 4) {
+                        clues = `${M} is not at the top.<br>${B} is not at the top.<br>${M} sits above ${B}.`;
+                        positions = { top: T, middle: M, bottom: B };
+                        explainBase = `Only ${T} can be at the top since ${M} and ${B} are ruled out, and since ${M} sits above ${B}`;
+                        // Phase 12B fix: the clues name only M and B, so the top
+                        // symbol is NOT deducible from the question — asking for
+                        // the top would make the puzzle unsolvable. Only the
+                        // middle and bottom positions are deducible here.
+                        askable = ['middle', 'bottom'];
+                    } else {
+                        clues = `${T} is not in the middle.<br>${B} is not in the middle.<br>${T} sits above ${M}.`;
+                        positions = { top: T, middle: M, bottom: B };
+                        explainBase = `Only ${M} can be in the middle since ${T} and ${B} are ruled out, and since ${T} sits above ${M}`;
+                        askable = ['top', 'middle', 'bottom'];
                     }
                     const pos = this.pick(askable);
                     const posName = pos === 'middle' ? 'in the middle' : (pos === 'top' ? 'at the top' : 'at the bottom');
@@ -1835,27 +1986,65 @@ const PuzzleGen = {
                 // braided into one line; the solver must separate the two tracks
                 name: 'interleaved-cycles', min: 4, max: 6,
                 generate: dd => {
-                    // Phase 12A: vary the first cycle's length, both cycles' entry
-                    // phases, and the cut point. The underlying braided-cycle
-                    // reasoning is unchanged.
-                    const L1 = this.rand(2, 3);
-                    const c1 = this.shuffle(this.shapes).slice(0, L1);
-                    const c2 = this.shuffle(this.shapes.filter(s => !c1.includes(s))).slice(0, 2);
+                    // Phase 12B: explicit structure registry — three genuinely
+                    // different braid relationships (the Phase 12A o1/o2 entry
+                    // offsets are presentation-only and are NOT counted here):
+                    //   equal-braid   — cycle + 2-cycle (Phase 12A)
+                    //   unequal-braid — cycle + 3-cycle: the two tracks now have
+                    //                   different periods, so the solver must time
+                    //                   both cycles, not one cycle and a flip
+                    //   growth-braid — a symbol cycle braided with a growing count
+                    //                   (cycle + attribute progression)
+                    const structs = ['equal-braid', 'unequal-braid', 'growth-braid'];
+                    this._lastStruct = this._lastStruct || {};
+                    let pool = structs.filter(s => s !== this._lastStruct['interleaved-cycles']);
+                    const st = this.pick(pool);
+                    this._lastStruct['interleaved-cycles'] = st;
+                    let c1, c2, L1, L2 = 2, growth = null;
+                    if (st === 'equal-braid') {
+                        L1 = this.rand(2, 3);
+                        c1 = this.shuffle(this.shapes).slice(0, L1);
+                        c2 = this.shuffle(this.shapes.filter(s => !c1.includes(s))).slice(0, 2);
+                    } else if (st === 'unequal-braid') {
+                        L1 = 2; L2 = 3;
+                        c1 = this.shuffle(this.shapes).slice(0, 2);
+                        c2 = this.shuffle(this.shapes.filter(s => !c1.includes(s))).slice(0, 3);
+                    } else {
+                        L1 = 2; L2 = 2;
+                        c1 = this.shuffle(this.shapes).slice(0, 2);
+                        growth = this.pick(this.shapes.filter(s => !c1.includes(s)));
+                    }
                     const o1 = this.rand(0, L1 - 1);
-                    const o2 = this.rand(0, 1);
-                    const shown = this.rand(5, 7);
-                    const term = i => (i % 2 === 0)
-                        ? c1[(Math.floor(i / 2) + o1) % L1]
-                        : c2[(Math.floor(i / 2) + o2) % 2];
+                    const o2 = growth ? 0 : this.rand(0, L2 - 1);
+                    // Phase 12B fix: the unequal braid's odd track is a 3-cycle, so
+                    // the sequence must show one full odd cycle (3 odd terms) for
+                    // the answer to be deducible — shown=5 gives only 2 odd terms
+                    // of a 3-cycle, which is unsolvable. Force shown=7 there.
+                    const shown = st === 'unequal-braid' ? 7 : this.rand(5, 7);
+                    let term;
+                    if (growth) {
+                        term = i => (i % 2 === 0)
+                            ? c1[(Math.floor(i / 2) + o1) % 2]
+                            : growth.repeat(Math.floor(i / 2) + 1);
+                    } else {
+                        term = i => (i % 2 === 0)
+                            ? c1[(Math.floor(i / 2) + o1) % L1]
+                            : c2[(Math.floor(i / 2) + o2) % L2];
+                    }
                     const terms = [];
                     for (let i = 0; i < shown; i++) terms.push(term(i));
                     const answer = term(shown);
                     const question = terms.join(this.SEP) + this.SEP + '?';
                     // Plausible errors: the other track's next term, and wrong-phase symbols
+                    const others = growth
+                        ? [c1[0], c1[1], growth, growth + growth]
+                        : [c1, c2].flat();
                     const distractors = this.uniqueDistractors(answer,
-                        [term(shown + 1)].concat([c1, c2].flat().filter(s => s !== answer)));
-                    const explain = `Two cycles are braided together: ${c1.join(' → ')} on the even steps and ${c2.join(' → ')} on the odd steps. The next term continues the ${shown % 2 === 0 ? 'first' : 'second'} cycle: ${answer}.`;
-                    return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-interleaved'], params: { L1, o1, o2, shown } };
+                        [term(shown + 1)].concat(others.filter(s => s !== answer)));
+                    const explain = growth
+                        ? `Two patterns are braided together: ${c1.join(' → ')} cycles on the even steps while the odd steps show one, then two, then three of ${growth}. The next term is ${answer}.`
+                        : `Two cycles of different lengths are braided together: ${c1.join(' → ')} on the even steps and ${c2.join(' → ')} on the odd steps. The next term continues the ${shown % 2 === 0 ? 'first' : 'second'} cycle: ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-interleaved'], params: { structure: st, L1, o1, o2, shown } };
                 }
             }
         ];
