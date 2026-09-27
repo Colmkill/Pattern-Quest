@@ -1233,6 +1233,176 @@ const PuzzleGen = {
         return out;
     },
     
+    // --- Phase 13A: Controlled two-rule generation ---
+    // Two deliberate combinations of EXISTING reasoning mechanisms only:
+    //   A) Quantitative + Spatial   (independent attribute channels: count vs orientation)
+    //   B) Spatial + Alternation    (alternation controls WHICH spatial transform applies)
+    // Frequency is explicit and adjustable: 1 in TWO_RULE.frequency eligible
+    // puzzles (difficulty 3-5 in the host category). If two-rule generation or
+    // rule-necessity validation fails within the bounded budget, the existing
+    // single-rule builder continues unchanged — never a relabelled single-rule
+    // puzzle claiming to be two-rule.
+    TWO_RULE: { enabled: true, frequency: 3, minD: 3, maxD: 5, budget: 6 },
+
+    // Eligibility: host category + difficulty window, then an explicit
+    // deterministic in-session cadence (every Nth eligible puzzle).
+    twoRuleDue(category, difficulty) {
+        if (!this.TWO_RULE.enabled) return false;
+        if (difficulty < this.TWO_RULE.minD || difficulty > this.TWO_RULE.maxD) return false;
+        if (category !== 'quantitative' && category !== 'spatial') return false;
+        this._twoRuleSeen = (this._twoRuleSeen || 0) + 1;
+        return this._twoRuleSeen % this.TWO_RULE.frequency === 1;
+    },
+
+    buildTwoRule(category, d) {
+        return category === 'quantitative'
+            ? this.buildQuantSpatialTwoRule(d)
+            : this.buildSpatialAlternationTwoRule(d);
+    },
+
+    // Bounded, in-session duplicate avoidance for composed instances (mirrors the
+    // 12A signature mechanism; two-rule builders deliberately bypass
+    // _generateFamily so no single-rule behaviour changes). Uses its OWN window,
+    // smaller than the single-rule 12-slot one: composed parameter spaces are
+    // much smaller, and a 12-slot window could exhaust them entirely (a space
+    // of 8 signatures would never free a slot). Window 6 keeps bounded
+    // repetition without permanently blocking either combination.
+    _twoRuleSig(category, sig) {
+        if (!this._recentTwoRuleSigs) this._recentTwoRuleSigs = {};
+        if (!this._recentTwoRuleSigs[category]) this._recentTwoRuleSigs[category] = [];
+        const w = this._recentTwoRuleSigs[category];
+        if (w.includes(sig)) return false;
+        w.push(sig);
+        if (w.length > 6) w.shift();
+        return true;
+    },
+
+    // --- Combination A: Quantitative + Spatial (ruleRelation: independent) ---
+    // Rule A (quantitative, existing structures): the GROUP SIZE follows
+    // constant-step or alternating-steps growth.
+    // Rule B (spatial, existing structure): the arrow ORIENTATION follows the
+    // constant-rotation structure.
+    // The channels are disjoint: rule A fixes the count, rule B the orientation.
+    // Both are non-degenerate (growth step >= 1, rotation step >= 1), so NEITHER
+    // rule alone can determine the (orientation, count) answer; together they
+    // determine exactly one.
+    buildQuantSpatialTwoRule(d) {
+        const dirs = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+        // Rule B: existing rotation/constant structure
+        const step = d >= 4 ? this.rand(1, 2) : 1;
+        const start = this.rand(0, 7);
+        const at = i => dirs[((start + step * i) % 8 + 8) % 8];
+        // Rule A: existing quantitative structures
+        let counts, countAnswer, quantName, qParams, qPhrase, qType;
+        if (d >= 4 && this.rand(0, 1) === 1) {
+            quantName = 'alternating-steps';
+            const s = this.rand(1, 2), p = this.rand(1, 2), q = this.rand(2, 3);
+            counts = [s, s + p, s + p + q, s + 2 * p + q];
+            countAnswer = s + 2 * p + 2 * q;
+            qParams = { s, p, q };
+            qPhrase = `the counts grow by ${p}, then ${q}, then ${p} again`;
+            qType = 'alternating-steps';
+        } else {
+            quantName = 'constant-step';
+            const st = this.rand(1, 3), q = this.rand(1, 3);
+            counts = [st, st + q, st + 2 * q, st + 3 * q];
+            countAnswer = st + 4 * q;
+            qParams = { start: st, step: q };
+            qPhrase = `the counts grow by ${q} each time`;
+            qType = 'quantitative-sequence';
+        }
+        if (countAnswer > 24) return null; // bounded visual size
+        const frames = counts.map((n, i) => at(i).repeat(n));
+        const answer = at(4).repeat(countAnswer);
+        // Single-rule witnesses (abstract channel values, not visual guesses):
+        const aOnly = at(3).repeat(countAnswer);  // quant only: orientation left unchanged
+        const bOnly = at(4).repeat(counts[3]);    // rotation only: count left unchanged
+        const params = { structure: 'quant-spatial', quant: quantName, rotationStep: step, ruleRelation: 'independent', ...qParams };
+        if (!this._twoRuleSig('quantitative', 'twoRule:' + JSON.stringify(params))) return null;
+        return {
+            question: frames.join(this.SEP) + this.SEP + '?',
+            answer,
+            distractors: this.uniqueDistractors(answer, [aOnly, bOnly,
+                at(5).repeat(countAnswer),           // wrong rotation step
+                at(4).repeat(countAnswer - 1),        // off-by-one count
+                at(4).repeat(countAnswer + 1)].filter(s => s.length >= 1)),
+            explanation: `Two rules work together: the arrows turn ${step * 45}° clockwise each step, and ${qPhrase}. So the next group points ${at(4)} and holds ${countAnswer} arrows: ${answer}.`,
+            ruleTypes: [qType, 'rotation'],
+            params,
+            necessity: [aOnly, bOnly]
+        };
+    },
+
+    // --- Combination B: Spatial + Alternation (ruleRelation: interacting) ---
+    // Rule A (spatial, existing mechanisms): a transform PAIR — constant rotation
+    // R (turn) and the existing glide-reflection mirror transform G (flip, then an
+    // optional turn).
+    // Rule B (alternation, existing structure): which transform applies each
+    // step follows a strict alternation (turn, flip, turn, flip … or its mirror
+    // lead). The player must identify BOTH transforms AND the alternation order:
+    // without rule B there is no way to know which transform applies next, and
+    // without rule A there is nothing to alternate.
+    buildSpatialAlternationTwoRule(d) {
+        const dirs = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+        const mirrorLR = { '→': '←', '←': '→', '↗': '↙', '↙': '↗', '↘': '↖', '↖': '↘', '↑': '↓', '↓': '↑' };
+        const rot = (a, k) => dirs[(dirs.indexOf(a) + k + 16) % 8];
+        const rStep = this.rand(1, 2);
+        const gStep = this.rand(0, 1);
+        const R = a => rot(a, rStep);
+        const G = a => rot(mirrorLR[a], gStep);
+        const lead = this.rand(0, 1) === 1 ? G : R;   // which transform opens
+        const other = lead === R ? G : R;
+        const start = this.pick(dirs);
+        const xs = [start];
+        for (let i = 0; i < 4; i++) xs.push((i % 2 === 0 ? lead : other)(xs[i]));
+        const answer = xs[4]; // the 4th step applies `other` again
+        // Necessity guard (abstract): if any SINGLE transform explains every
+        // shown step, the alternation rule would be redundant -> reject instance.
+        for (let k = 0; k < 8; k++) {
+            const T = a => rot(a, k), M = a => rot(mirrorLR[a], k);
+            if ([0, 1, 2].every(i => T(xs[i]) === xs[i + 1])) return null;
+            if ([0, 1, 2].every(i => M(xs[i]) === xs[i + 1])) return null;
+        }
+        const rival = lead(xs[3]);        // "same transform as last step" misread
+        if (rival === answer) return null; // alternation would not matter here
+        const flipOfAnswer = mirrorLR[answer]; // mirror applied out of alternation context
+        const params = { structure: 'spatial-alternation', rotationStep: rStep, mirrorTurn: gStep, lead: lead === R ? 'R' : 'G', ruleRelation: 'interacting' };
+        if (!this._twoRuleSig('spatial', 'twoRule:' + JSON.stringify(params))) return null;
+        const turnPhrase = `${rStep * 45}° clockwise`;
+        const flipPhrase = `flipped left-to-right${gStep ? ` then turned ${gStep * 45}° clockwise` : ''}`;
+        const leadName = lead === R ? `turned ${turnPhrase}` : flipPhrase;
+        const otherName = lead === R ? flipPhrase : `turned ${turnPhrase}`;
+        return {
+            question: xs.slice(0, 4).join('  ') + '  ?',
+            answer,
+            distractors: this.uniqueDistractors(answer, [rival, flipOfAnswer, rot(answer, 1), rot(answer, -1), rot(answer, 4)]),
+            explanation: `Two rules work together: the arrows alternate between two steps — one ${leadName}, the other ${otherName}. The steps so far are ${lead === R ? 'turn, flip, turn' : 'flip, turn, flip'}, so the next step is the ${lead === R ? 'flip' : 'turn'}, giving ${answer}.`,
+            ruleTypes: ['rotation', 'alternation'],
+            params,
+            necessity: [rival, flipOfAnswer]
+        };
+    },
+
+    // --- Phase 13A: rule-necessity validation (isolated) ---
+    // A two-rule puzzle may enter the pipeline only when classified VALID:
+    //   VALID    — exactly two declared rules, a ruleRelation, and at least two
+    //               DISTINCT single-rule rival answers, none equal to the
+    //               combined answer (no single rule pins it down);
+    //   REDUNDANT— a single-rule rival equals the answer (one rule suffices);
+    //   COSMETIC — the rivals coincide (the "second rule" adds no constraint);
+    //   INVALID  — malformed declaration (missing ruleRelation / rivals).
+    // Rivals are abstract single-rule continuations computed from the underlying
+    // rule metadata, never from visual appearance.
+    _checkTwoRuleNecessity(raw) {
+        if (!raw || !Array.isArray(raw.ruleTypes) || raw.ruleTypes.length !== 2) return 'INVALID';
+        if (!raw.params || !raw.params.ruleRelation) return 'INVALID';
+        const rivals = raw.necessity;
+        if (!Array.isArray(rivals) || rivals.length < 2) return 'INVALID';
+        if (rivals.some(r => r === raw.answer)) return 'REDUNDANT';
+        if (new Set(rivals).size < 2) return 'COSMETIC';
+        return 'VALID';
+    },
+
     // --- Difficulty & category selection ---
     // Level 1 -> base 1, Level 2 -> base 3, Level 3 -> base 5; +1 per Cycle above 1. Cap 6.
     getDifficulty(cycle, level) {
@@ -2068,6 +2238,10 @@ const PuzzleGen = {
             correctIndex: options.indexOf(raw.answer),
             explanation: raw.explanation,
             ruleTypes: raw.ruleTypes,
+            // Phase 13A: minimal additive field — carries generator metadata such
+            // as the two-rule ruleRelation. Optional (null for puzzles without
+            // params); validate() does not require it and no consumer breaks.
+            params: raw.params || null,
             meta: {
                 cycle: cycle,
                 level: level,
@@ -2110,6 +2284,21 @@ const PuzzleGen = {
             deduction: dd => this.buildDeduction(dd),
             prediction: dd => this.buildPrediction(dd)
         };
+        
+        // Phase 13A: a controlled two-rule puzzle is attempted FIRST for eligible
+        // positions (explicit, adjustable cadence), retried within a bounded
+        // budget. Only if no VALID two-rule instance can be composed does the
+        // existing single-rule path continue, unchanged — the fallback is an
+        // honest single-rule puzzle, never a relabelled one.
+        if (this.twoRuleDue(category, difficulty)) {
+            for (let t = 0; t < this.TWO_RULE.budget; t++) {
+                const tr = this.buildTwoRule(category, difficulty);
+                if (tr && this._checkTwoRuleNecessity(tr) === 'VALID') {
+                    const tp = this.finalize(tr, category, difficulty, cycle, level, puzzleNumber);
+                    if (this.validate(tp)) return tp;
+                }
+            }
+        }
         
         // Generate + validate; discard and regenerate on failure
         for (let attempt = 0; attempt < 10; attempt++) {
@@ -2225,7 +2414,11 @@ const DifficultyModel = {
         ['quantitative-sequence', 'distribution'],
         // Phase 11 families:
         ['reflection', 'rotation'],           // glide reflection composes both transforms
-        ['rotation', 'alternating-steps']     // alternating rotation combines the two rules
+        ['rotation', 'alternating-steps'],    // alternating rotation combines the two rules
+        // Phase 13A: the two-rule Spatial + Alternation combination — the
+        // alternation decides which spatial transform applies next, so the rules
+        // must genuinely be combined while solving (additive entry only).
+        ['rotation', 'alternation']
     ],
     // Rule pairs that co-occur but do NOT interact (solved independently).
     NON_INTERACTING_PAIRS: [
