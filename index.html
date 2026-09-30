@@ -2699,10 +2699,46 @@ const DifficultyModel = {
         return prev[n];
     },
     
+    // --- Phase 14D-2: structural metadata accessor ---
+    // Single entry point to the verified Phase 14B/14D-1 structuralFeatures.
+    // Every metadata-driven measurement below reads ONLY from here; a null
+    // return means the puzzle carries no structural metadata and the
+    // documented legacy fallback applies.
+    _features(p) {
+        return (p.structural && p.structural.structuralFeatures) || null;
+    },
+
     // --- Dimension 1: rule complexity (1-5) ---
     // Highest complexity among the puzzle's rule types; a second genuine rule
     // adds one step of combined-rule complexity (capped at 5).
+    // --- Dimension 1: rule complexity (1-5), Phase 14D-2 metadata-first ---
+    // Reads the generator's declared structural identity (two-rule
+    // ruleStructures, structure registry id, family) before rule type names,
+    // using the SAME established RULE_COMPLEXITY table — no new weights.
+    // Identifier strings that are not in the table simply fall through; the
+    // legacy ruleTypes lookup remains as the documented fallback for puzzles
+    // without structural metadata.
     scoreRuleComplexity(p) {
+        const f = DifficultyModel._features(p);
+        const names = [];
+        if (f) {
+            if (Array.isArray(p.structural.ruleStructures)) names.push(...p.structural.ruleStructures);
+            if (f.structure) names.push(f.structure);
+            if (f.family) names.push(f.family);
+        }
+        names.push(...p.ruleTypes); // generator-declared rule vocabulary (never parsed text)
+        let score = 1;
+        for (const r of names) {
+            const v = DifficultyModel.RULE_COMPLEXITY[r];
+            if (typeof v === 'number') score = Math.max(score, v);
+        }
+        if (p.ruleTypes.length > 1) score = Math.min(5, score + 1);
+        return score;
+    },
+
+    // Legacy (pre-14D-2) measurement, retained verbatim for dual-measurement
+    // comparison in the Phase 14D-2 tests. Not used by analyze().
+    legacyScoreRuleComplexity(p) {
         let score = 1;
         for (const r of p.ruleTypes) {
             score = Math.max(score, DifficultyModel.RULE_COMPLEXITY[r] || 2);
@@ -2715,7 +2751,48 @@ const DifficultyModel = {
     // Category base (documented) plus rule-driven reasoning steps:
     // second-order growth, alternating steps, irrelevant-premise filtering,
     // multi-premise chains and shuffled clues each add meaningful steps.
+    // --- Dimension 2: inference steps (1-5), Phase 14D-2 metadata-first ---
+    // Category base (documented) plus structure-driven reasoning steps, read
+    // from the generator's declared structural identity where possible.
+    // The logical chain length now comes from the family name (inclusion-N)
+    // and out-of-order clues from the family (shuffled-chain) instead of
+    // counting phrases in the question text; the text counts remain only as
+    // the documented fallback when the family is unknown.
     scoreInferenceSteps(p) {
+        const f = DifficultyModel._features(p);
+        const base = { quantitative: 2, spatial: 2, logical: 2, distribution: 2,
+                       alternation: 2, matrix: 2, deduction: 3, prediction: 2 }[p.category] || 2;
+        let steps = base;
+        if (p.ruleTypes.includes('second-order')) steps += 2;   // growth-of-growth
+        if (p.ruleTypes.includes('alternating-steps')) steps += 1;
+        if (p.ruleTypes.includes('irrelevant-premise')) steps += 1; // discard the red herring
+        if (p.ruleTypes.includes('logical-inclusion')) {
+            // Metadata-first: family declares the transitive chain length.
+            let links = 0;
+            const m = f && f.family ? f.family.match(/^inclusion-(\d+)$/) : null;
+            if (m) links = parseInt(m[1], 10);
+            else links = (p.question.match(/All /g) || []).length; // legacy fallback
+            steps += Math.max(0, links - 2);
+        }
+        if (p.ruleTypes.includes('deduction-order')) {
+            // Metadata-first: the shuffled-chain family declares out-of-order
+            // clues (one extra reordering step).
+            if (f && f.family === 'shuffled-chain') steps += 1;
+            else {
+                const clueCount = (p.question.match(/sits above/g) || []).length; // legacy fallback
+                if (clueCount >= 3) steps += 1;
+            }
+        }
+        if (p.ruleTypes.includes('matrix-shape') && p.ruleTypes.includes('matrix-count')) steps += 1; // two features to verify
+        if (p.ruleTypes.includes('deduction-negative')) steps += 1; // elimination is an extra reasoning step
+        if (p.ruleTypes.includes('prediction-interleaved')) steps += 1; // two tracks must be separated
+        if (p.ruleTypes.includes('logical-exclusion')) steps += 1; // negative constraint is an extra step
+        return Math.max(1, Math.min(5, steps));
+    },
+
+    // Legacy (pre-14D-2) measurement, retained verbatim for dual-measurement
+    // comparison. Not used by analyze().
+    legacyScoreInferenceSteps(p) {
         const base = { quantitative: 2, spatial: 2, logical: 2, distribution: 2,
                        alternation: 2, matrix: 2, deduction: 3, prediction: 2 }[p.category] || 2;
         let steps = base;
@@ -2742,7 +2819,29 @@ const DifficultyModel = {
     // --- Dimension 3: rule interaction (1-5) ---
     // Based on whether the puzzle's rules must be COMBINED while solving,
     // not merely on how many rule types are listed.
+    // --- Dimension 3: rule interaction (1-5), Phase 14D-2 metadata-first ---
+    // The generator now DECLARES the actual relationship between the rules
+    // (structuralFeatures.ruleRelation: 'interacting' rules must be combined
+    // while solving; 'independent' rules are solved separately), and the 13A
+    // necessity proof confirms genuine interaction. The legacy rule-name
+    // pair lists remain only as the documented fallback when the relation is
+    // not exposed.
     scoreRuleInteraction(p) {
+        const f = DifficultyModel._features(p);
+        const ruleCount = (f && typeof f.ruleCount === 'number') ? f.ruleCount : p.ruleTypes.length;
+        if (ruleCount === 1) return 1; // one independent rule
+        if (f && f.ruleRelation === 'interacting') return 3; // generator-declared combined solving
+        if (f && f.ruleRelation === 'independent') return 2; // co-occurring, independent
+        if (f && f.necessity && f.necessity.ruleARequired && f.necessity.ruleBRequired) return 3; // proven genuine interaction
+        const has = (list) => list.some(a => p.ruleTypes.includes(a[0]) && p.ruleTypes.includes(a[1]));
+        if (has(DifficultyModel.INTERACTING_PAIRS)) return 3; // legacy fallback
+        if (has(DifficultyModel.NON_INTERACTING_PAIRS)) return 2;
+        return 2; // multiple rules, no known interaction
+    },
+
+    // Legacy (pre-14D-2) measurement, retained verbatim for dual-measurement
+    // comparison. Not used by analyze().
+    legacyScoreRuleInteraction(p) {
         if (p.ruleTypes.length === 1) return 1; // one independent rule
         const has = (list) => list.some(a => p.ruleTypes.includes(a[0]) && p.ruleTypes.includes(a[1]));
         if (has(DifficultyModel.INTERACTING_PAIRS)) return 3; // genuinely interacting rules
@@ -2754,7 +2853,54 @@ const DifficultyModel = {
     // Counts DISTINCT information units the solver must retain or compare.
     // Repetition does not add load (a cycle of 2 shown 5 times is 2 units),
     // so irrelevant visual clutter does not inflate this score.
+    // --- Dimension 4: working-memory demand (1-5), Phase 14D-2 metadata-first ---
+    // Counts DISTINCT information units the solver must retain or compare.
+    // Metadata-first where the structural features carry the information:
+    //   - logical: the inclusion-N family declares the chain length;
+    //   - sequence categories: the deterministic shownTerms feature.
+    // Grid-content units (matrix/distribution), deduction clue counts and
+    // prediction cycle lengths are NOT exposed by the structural metadata, so
+    // their legacy question-content measurements remain as documented
+    // fallbacks (they read the rendered puzzle content, never explanations).
     scoreWorkingMemory(p) {
+        const f = DifficultyModel._features(p);
+        let units;
+        if (p.ruleTypes.includes('prediction-cycle')) {
+            units = new Set(p.options).size; // cycle length is the true load (documented fallback: no metadata cycle length)
+        } else if (p.category === 'matrix' || p.category === 'distribution') {
+            // Distinct symbols and rows that must be compared simultaneously.
+            // (Documented fallback: grid content is not in the structural metadata.)
+            const symbols = new Set((p.question.match(/[^ <br>?!/]/g) || []));
+            const rows = (p.question.match(/<br>/g) || []).length;
+            units = Math.min(symbols.size, 12) + rows;
+        } else if (p.category === 'logical') {
+            // Metadata-first: the family name declares the premise-chain length.
+            const m = f && f.family ? f.family.match(/^inclusion-(\d+)$/) : null;
+            units = m ? (parseInt(m[1], 10) + 1)
+                      : ((p.question.match(/All /g) || []).length + 1); // legacy fallback
+        } else if (p.category === 'deduction') {
+            units = (p.question.match(/sits above/g) || []).length + 2; // documented fallback: clue count not in metadata
+        } else {
+            // Metadata-first: the deterministic shownTerms feature (terms the
+            // solver must inspect before the '?'); legacy question splitting
+            // remains the fallback when the feature is absent.
+            if (f && typeof f.shownTerms === 'number') {
+                units = f.shownTerms;
+            } else {
+                const items = p.question.split(/<br>/)[0].split(/ {2,}/).filter(s => s && s !== '?');
+                units = items.length;
+            }
+        }
+        if (units <= 4) return 1;
+        if (units <= 7) return 2;
+        if (units <= 10) return 3;
+        if (units <= 13) return 4;
+        return 5;
+    },
+
+    // Legacy (pre-14D-2) measurement, retained verbatim for dual-measurement
+    // comparison. Not used by analyze().
+    legacyScoreWorkingMemory(p) {
         let units;
         if (p.ruleTypes.includes('prediction-cycle')) {
             units = new Set(p.options).size; // cycle length is the true load
@@ -2783,6 +2929,10 @@ const DifficultyModel = {
     // Mean normalised string similarity between the correct answer and each
     // distractor. Highly similar strings (e.g. '▲▲▲' vs '▲▲') represent plausible
     // alternative readings of the rule; unrelated padding glyphs score low.
+    // Phase 14D-2: this remains a rendered-option measurement — the structural
+    // metadata exposes distractor CLASS counts (see metadataFeatures in
+    // analyze) but no similarity magnitude, so no metadata equivalent exists
+    // yet. Documented retained fallback; reads options, never explanations.
     scoreDistractorSimilarity(p) {
         const answer = p.correctAnswer;
         let total = 0;
@@ -2804,7 +2954,52 @@ const DifficultyModel = {
     // Only meaningful where the puzzle involves transformations. Categories
     // without transformation demand score the minimum (documented floor),
     // never an invented value.
+    // --- Dimension 6: transformation complexity (1-5), Phase 14D-2 metadata-first ---
+    // Transformation magnitude now comes from the generator's structural
+    // transformation metadata (normalisedRotationStep / alternatingSteps),
+    // NEVER from parsing explanation text. Structural fallbacks below use
+    // generator-declared ruleTypes (metadata vocabulary, not text): the
+    // alternating turn structure and the second-order convention already
+    // established elsewhere in this model. Categories without transformation
+    // demand score the minimum (documented floor), never an invented value.
     scoreTransformation(p) {
+        const f = DifficultyModel._features(p);
+        if (p.category === 'spatial') {
+            // Metadata-first: constant rotation magnitude, reflection-normalised.
+            if (f && typeof f.normalisedRotationStep === 'number') {
+                const n = f.normalisedRotationStep;
+                if (n >= 3) return 4;   // 135° or larger turns
+                if (n === 2) return 3;  // 90° turns
+                return 2;               // 45° turns
+            }
+            // Metadata-first: alternating turn sizes (s1, s2) as generated.
+            if (f && f.transformation && Array.isArray(f.transformation.alternatingSteps)) {
+                const steps = f.transformation.alternatingSteps;
+                if (steps.some(s => s === 2)) return 3; // a 90° turn component
+                if (steps.some(s => s >= 3)) return 4;  // a 135°+ turn component
+                return 2;
+            }
+            // Structural fallbacks from generator-declared ruleTypes:
+            if (p.ruleTypes.includes('second-order')) return 4;       // accelerating turns (established second-order convention)
+            if (p.ruleTypes.includes('alternating-steps')) return 3; // alternating turn structure (direction-flip)
+            return 2;
+        }
+        if (p.category === 'matrix') {
+            return p.ruleTypes.includes('matrix-shape') ? 3 : 2; // count and/or shape transform per cell
+        }
+        if (p.ruleTypes.includes('quantitative-sequence') && p.category === 'alternation') {
+            return 2; // growing groups interleaved with a constant
+        }
+        if (p.ruleTypes.includes('second-order')) {
+            return 4; // transformation of the transformation itself
+        }
+        return 1; // static relationship, no meaningful transformation
+    },
+
+    // Legacy (pre-14D-2) measurement, retained verbatim for dual-measurement
+    // comparison. This is the explanation-text-parsing version the metadata
+    // replaced. Not used by analyze().
+    legacyScoreTransformation(p) {
         if (p.category === 'spatial') {
             // Rotation step: harder rotations are bigger steps (from explanation).
             if (p.explanation.includes('90°')) return 3;
@@ -2841,6 +3036,11 @@ const DifficultyModel = {
     
     // Public entry point: analyse a validated Phase 8 contract.
     // Pure function of the contract — deterministic and reproducible.
+    // Phase 14D-2: the six dimensions are now measured metadata-first (see
+    // each scoring function); toDifficulty and WEIGHTS are unchanged. The
+    // additive metadataFeatures block exposes the structural features the
+    // measurements consumed, for future calibration — it is NOT part of the
+    // difficulty profile and does not affect toDifficulty.
     analyze(p) {
         const profile = {
             ruleComplexity: DifficultyModel.scoreRuleComplexity(p),
@@ -2849,6 +3049,32 @@ const DifficultyModel = {
             workingMemoryDemand: DifficultyModel.scoreWorkingMemory(p),
             distractorSimilarity: DifficultyModel.scoreDistractorSimilarity(p),
             transformationComplexity: DifficultyModel.scoreTransformation(p)
+        };
+        const f = DifficultyModel._features(p);
+        const metadataFeatures = f ? {
+            calibrationCanonicalId: f.calibrationCanonicalId,
+            informationAvailability: f.informationAvailability,
+            distractorTypeCounts: f.distractorTypeCounts,
+            ruleRelation: f.ruleRelation,
+            necessity: f.necessity
+        } : null;
+        return {
+            difficulty: DifficultyModel.toDifficulty(profile, p.category),
+            difficultyProfile: profile,
+            metadataFeatures: metadataFeatures
+        };
+    },
+
+    // Legacy (pre-14D-2) analysis, retained verbatim for dual-measurement
+    // comparison in the Phase 14D-2 tests. Not used by PuzzleFactory.
+    legacyAnalyze(p) {
+        const profile = {
+            ruleComplexity: DifficultyModel.legacyScoreRuleComplexity(p),
+            inferenceSteps: DifficultyModel.legacyScoreInferenceSteps(p),
+            ruleInteraction: DifficultyModel.legacyScoreRuleInteraction(p),
+            workingMemoryDemand: DifficultyModel.legacyScoreWorkingMemory(p),
+            distractorSimilarity: DifficultyModel.scoreDistractorSimilarity(p),
+            transformationComplexity: DifficultyModel.legacyScoreTransformation(p)
         };
         return {
             difficulty: DifficultyModel.toDifficulty(profile, p.category),
