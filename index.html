@@ -2360,7 +2360,7 @@ const PuzzleGen = {
         // "same reasoning structure" can be distinguished from "different
         // glyphs, same structure". Not used for duplicate detection here.
         const canonicalId = [family || 'unknown', structure || '-', params ? JSON.stringify(params) : ''].join(':');
-        return {
+        const s = {
             category: category,
             family: family,
             structure: structure,
@@ -2374,6 +2374,98 @@ const PuzzleGen = {
             distractors: distractorMeta,
             canonicalId: canonicalId
         };
+        // Phase 14D-1: calibration-oriented canonical identity + structural
+        // features, derived from the structural metadata ONLY. The existing
+        // canonicalId (duplicate detection) is untouched; these are separate,
+        // additive, deterministic representations for future calibration.
+        s.calibrationCanonicalId = this._calibrationCanonical(s);
+        s.structuralFeatures = this._structuralFeatures(s, raw);
+        return s;
+    },
+
+    // --- Phase 14D-1: canonical normalisation for calibration ---
+    // Cosmetic parameter keys per family — parameters established as
+    // presentation-only by Phase 12B/14C testing: spatial `start` (initial
+    // orientation), rotation `dir` (declared reflection-equivalent), and
+    // abba-block `phase` (a rotation of the repeating block). Genuine
+    // structural parameters (steps, ratios, lengths, templates, composition
+    // order) are deliberately PRESERVED.
+    _CALIBRATION_COSMETIC: {
+        'rotation': ['start', 'dir'],
+        'glide-reflection': ['start'],
+        'alternating-rotation': ['start'],
+        'abba-block': ['phase']
+    },
+
+    // Calibration canonical identity: category + family + structure + the
+    // NON-cosmetic parameters. Two instances of the same abstract reasoning
+    // structure that differ only in cosmetic presentation collapse to the same
+    // identity; genuinely different structures remain distinct.
+    _calibrationCanonical(s) {
+        const cosmetic = (this._CALIBRATION_COSMETIC[s.family] || []);
+        let p = '';
+        if (s.params) {
+            const c = {};
+            for (const k of Object.keys(s.params)) if (!cosmetic.includes(k)) c[k] = s.params[k];
+            p = JSON.stringify(c);
+        }
+        return s.category + ':' + (s.family || '-') + ':' + (s.structure || '-') + ':' + p;
+    },
+
+    // --- Phase 14D-1: structural feature extraction ---
+    // A deterministic, machine-readable feature view of the existing
+    // structural metadata. Descriptive ONLY — no difficulty judgement, no
+    // complexity score. Information the generator genuinely lacks is marked
+    // 'limited' rather than fabricated.
+    _structuralFeatures(s, raw) {
+        const f = {
+            category: s.category,
+            family: s.family,
+            structure: s.structure,
+            ruleCount: s.ruleCount,
+            ruleRelation: s.ruleRelation,
+            // Raw structural parameters, verbatim (never a judgement).
+            parameters: s.params ? JSON.parse(JSON.stringify(s.params)) : null,
+            // Transformation features from generator metadata (never text).
+            transformation: (s.transformation && s.transformation.known)
+                ? JSON.parse(JSON.stringify(s.transformation)) : null,
+            // Necessity facts as proven by the Phase 13A mechanism.
+            necessity: (s.interaction && s.interaction.ruleARequired)
+                ? { ruleARequired: true, ruleBRequired: !!s.interaction.ruleBRequired,
+                    rivals: s.interaction.rivals || null }
+                : null,
+            // Distractor classification counts (including honest 'unknown').
+            distractorTypeCounts: {},
+            // Information availability states — NOT difficulty judgements.
+            informationAvailability: {
+                parameters: s.params ? 'available' : 'limited',
+                transformation: (s.transformation && s.transformation.known) ? 'available' : 'limited',
+                necessity: (s.interaction && s.interaction.ruleARequired) ? 'available' : 'limited'
+            }
+        };
+        for (const d of (s.distractors || [])) {
+            f.distractorTypeCounts[d.type] = (f.distractorTypeCounts[d.type] || 0) + 1;
+        }
+        // Normalised transformation features based on ESTABLISHED equivalences:
+        // rotation direction is reflection-equivalent, so steps s and 8−s are
+        // the same abstract transformation — the normalised magnitude collapses
+        // them. Raw values remain in `transformation`.
+        if (s.transformation && typeof s.transformation.rotationStep === 'number') {
+            f.normalisedRotationStep = Math.min(s.transformation.rotationStep, 8 - s.transformation.rotationStep);
+        }
+        if (s.transformation && Array.isArray(s.transformation.alternatingSteps)) {
+            // alternating (a,b) is the same abstract alternation as (b,a) lead-swapped
+            const [a, b] = s.transformation.alternatingSteps;
+            f.normalisedAlternatingSteps = [Math.min(a, b), Math.max(a, b)];
+        }
+        // Derived structural quantities from the rendered puzzle (deterministic,
+        // structural — number of terms the solver must inspect, option count).
+        if (raw && typeof raw.question === 'string' && !raw.question.includes('<br>')) {
+            const terms = raw.question.replace('?', '').trim().split(/\s+/).filter(x => x.length);
+            if (terms.length >= 2 && terms.length <= 30) f.shownTerms = terms.length;
+        }
+        f.calibrationCanonicalId = s.calibrationCanonicalId;
+        return f;
     },
     
     // Honest structural distractor classification derived from the
