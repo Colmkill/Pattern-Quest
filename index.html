@@ -1255,9 +1255,37 @@ const PuzzleGen = {
     },
 
     buildTwoRule(category, d) {
-        return category === 'quantitative'
+        const raw = category === 'quantitative'
             ? this.buildQuantSpatialTwoRule(d)
             : this.buildSpatialAlternationTwoRule(d);
+        // Phase 14B: structural metadata for the composed instance — the two
+        // mechanisms actually combined, their structures, the proven rule
+        // necessity, and the error type of each distractor (known exactly at
+        // construction time here; parallel to the distractors array order).
+        // Additive only — no generation behaviour changes.
+        if (raw) {
+            raw.meta = {
+                family: category === 'quantitative' ? 'quant-spatial-two-rule' : 'spatial-alternation-two-rule',
+                structure: raw.params.structure,
+                ruleStructures: category === 'quantitative'
+                    ? [raw.params.quant, 'rotation-constant']
+                    : ['rotation-constant', 'mirror', 'alternation-order'],
+                interaction: {
+                    ruleCount: 2,
+                    ruleRelation: raw.params.ruleRelation,
+                    // Necessity proven at generation: neither single-rule rival
+                    // equals the answer (both rules genuinely required). The
+                    // rivals are preserved for future structural analysis.
+                    ruleARequired: true,
+                    ruleBRequired: true,
+                    rivals: raw.necessity || null
+                },
+                distractorMeta: category === 'quantitative'
+                    ? ['rule-B-only', 'rule-A-only', 'wrong-transformation', 'near-miss', 'near-miss']
+                    : ['interaction-error', 'wrong-transformation', 'near-miss', 'near-miss', 'near-miss']
+            };
+        }
+        return raw;
     },
 
     // Bounded, in-session duplicate avoidance for composed instances (mirrors the
@@ -1449,6 +1477,13 @@ const PuzzleGen = {
         let raw = null;
         for (let attempt = 0; attempt < 4; attempt++) {
             raw = family.generate(d);
+            // Phase 14B: expose the ACTUAL generating family (reasoning
+            // mechanism, never glyph identity) as structural metadata. Additive
+            // only — no generation behaviour changes.
+            if (raw) {
+                if (!raw.meta) raw.meta = {};
+                raw.meta.family = family.name;
+            }
             if (!raw || !raw.params) break;
             const sig = family.name + ':' + JSON.stringify(raw.params);
             if (!this._recentSigs) this._recentSigs = {};
@@ -1771,7 +1806,10 @@ const PuzzleGen = {
             }
         ];
         const family = this._pickFamily('logical', d, families);
-        return family.generate(d);
+        const raw = family.generate(d);
+        // Phase 14B: expose the generating family (additive metadata only)
+        if (raw) { if (!raw.meta) raw.meta = {}; raw.meta.family = family.name; }
+        return raw;
     },
     
     // --- Category 4: Distribution of Attributes ---
@@ -1821,7 +1859,10 @@ const PuzzleGen = {
             }
         ];
         const family = this._pickFamily('distribution', d, families);
-        return family.generate(d);
+        const raw = family.generate(d);
+        // Phase 14B: expose the generating family (additive metadata only)
+        if (raw) { if (!raw.meta) raw.meta = {}; raw.meta.family = family.name; }
+        return raw;
     },
     
     // --- Category 5: Alternation ---
@@ -2024,7 +2065,12 @@ const PuzzleGen = {
             answer: raw.answer,
             distractors: raw.distractors,
             explanation: raw.explain,
-            ruleTypes: raw.rules
+            ruleTypes: raw.rules,
+            // Phase 14B: preserve the family/structure metadata attached by
+            // _generateFamily (previously discarded by this wrapper — the
+            // known source of the 12B sig-misattribution harness artifact).
+            params: raw.params || null,
+            meta: raw.meta || null
         };
     },
     
@@ -2242,6 +2288,14 @@ const PuzzleGen = {
             // as the two-rule ruleRelation. Optional (null for puzzles without
             // params); validate() does not require it and no consumer breaks.
             params: raw.params || null,
+            // Phase 14B: STRUCTURAL METADATA CONTRACT. A uniform, machine-readable
+            // description of what the puzzle actually contains, assembled from
+            // information the generators already know (never from explanation
+            // text, never from rendered glyphs). Purely descriptive — no
+            // difficulty judgement. Additive and optional: validate() does not
+            // require it, and the DifficultyModel is unchanged and free to
+            // ignore it until a future calibration phase.
+            structural: this._buildStructuralMeta(raw, category),
             meta: {
                 cycle: cycle,
                 level: level,
@@ -2249,6 +2303,100 @@ const PuzzleGen = {
                 expectedAnswer: raw.answer
             }
         };
+    },
+    
+    // --- Phase 14B: structural metadata assembly ---
+    // Deterministic function of the generated raw puzzle: same puzzle -> same
+    // metadata. Fields the generator genuinely does not know are represented
+    // honestly (null / 'unknown') rather than fabricated.
+    _buildStructuralMeta(raw, category) {
+        if (!raw) return null;
+        const family = (raw.meta && raw.meta.family) || null;
+        // Structure identity: the sub-family structure where one exists
+        // (12B registries / two-rule combos), otherwise the family itself —
+        // for families without a structure registry the family IS the single
+        // structure. Never a glyph or visual label.
+        const structure = (raw.params && raw.params.structure) || (raw.meta && raw.meta.structure) || family;
+        const params = raw.params || null;
+        const ruleRelation = (raw.meta && raw.meta.interaction && raw.meta.interaction.ruleRelation)
+            || (params && params.ruleRelation) || null;
+        // Interaction metadata: full detail for two-rule puzzles (from the
+        // 13A builders), otherwise the honest minimal fact: single-rule puzzles
+        // have no rule interaction.
+        const interaction = (raw.meta && raw.meta.interaction)
+            || (raw.necessity ? {
+                ruleCount: 2,
+                ruleRelation: ruleRelation,
+                // 13A necessity validation proved neither single-rule rival
+                // equals the answer; preserve the rivals for future analysis.
+                ruleARequired: true, ruleBRequired: true,
+                rivals: raw.necessity
+            } : { ruleCount: (raw.ruleTypes || []).length, ruleRelation: null });
+        // Transformation metadata: exposed from generator parameters, never
+        // parsed from explanation text. Only fields the generator actually
+        // used are included.
+        const transformation = {};
+        if (params) {
+            if (typeof params.rotationStep === 'number') transformation.rotationStep = params.rotationStep;
+            if (typeof params.step === 'number' && category === 'spatial') transformation.rotationStep = params.step;
+            if (typeof params.mirrorTurn === 'number') transformation.mirrorTurn = params.mirrorTurn;
+            if (typeof params.s1 === 'number' && typeof params.s2 === 'number') {
+                transformation.alternatingSteps = [params.s1, params.s2];
+                if (typeof params.dir === 'number') transformation.direction = params.dir === 1 ? 'cw' : 'ccw';
+            }
+            if (typeof params.dir === 'number' && !('s1' in params)) transformation.direction = params.dir === 1 ? 'cw' : 'ccw';
+            if (typeof params.lead === 'string') transformation.compositionOrder = params.lead;
+        }
+        if (Object.keys(transformation).length === 0) transformation.known = false; else transformation.known = true;
+        // Distractor metadata: exact error types where the builder knows them
+        // (two-rule); otherwise an honest structural classification derived
+        // from the answer/distractor relationship (same-glyph count variation,
+        // orientation neighbour), or 'unknown' — never a guess.
+        const distractorMeta = (raw.meta && raw.meta.distractorMeta)
+            ? raw.distractors.map((dstr, i) => ({ option: dstr, type: raw.meta.distractorMeta[i] || 'unknown' }))
+            : raw.distractors.map(dstr => ({ option: dstr, type: this._classifyDistractor(dstr, raw.answer) }));
+        // Canonical structural identity: the existing signature basis
+        // (family + structure + reasoning-relevant params), exposed so that
+        // "same reasoning structure" can be distinguished from "different
+        // glyphs, same structure". Not used for duplicate detection here.
+        const canonicalId = [family || 'unknown', structure || '-', params ? JSON.stringify(params) : ''].join(':');
+        return {
+            category: category,
+            family: family,
+            structure: structure,
+            params: params,
+            ruleCount: (raw.ruleTypes || []).length,
+            ruleTypes: raw.ruleTypes || [],
+            ruleStructures: (raw.meta && raw.meta.ruleStructures) || null,
+            ruleRelation: ruleRelation,
+            interaction: interaction,
+            transformation: transformation,
+            distractors: distractorMeta,
+            canonicalId: canonicalId
+        };
+    },
+    
+    // Honest structural distractor classification derived from the
+    // answer/distractor relationship (deterministic; no generation changes).
+    _classifyDistractor(dstr, answer) {
+        if (dstr === answer) return 'invalid-collision';
+        const dirs = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+        // Orientation neighbours: single arrows rotated from the answer
+        const dIdx = dirs.indexOf(dstr), aIdx = dirs.indexOf(answer);
+        if (dIdx >= 0 && aIdx >= 0) {
+            const delta = Math.min((dIdx - aIdx + 8) % 8, (aIdx - dIdx + 8) % 8);
+            if (delta === 1 || delta === 2) return 'orientation-near-miss';
+            if (delta === 4) return 'opposite';
+        }
+        // Count variation: same glyph repeated a different number of times
+        const g = [...new Set(answer)];
+        const dG = [...new Set(dstr)];
+        if (g.length === 1 && dG.length === 1 && g[0] === dG[0] && answer.length !== dstr.length) {
+            return Math.abs(answer.length - dstr.length) <= 2 ? 'count-near-miss' : 'count-variation';
+        }
+        // Multi-glyph answers with different glyph identity
+        if (g.length >= 1 && dG.length >= 1 && g.length !== dG.length) return 'glyph-variation';
+        return 'unknown';
     },
     
     validate(p) {
