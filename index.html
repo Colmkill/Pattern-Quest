@@ -1741,6 +1741,56 @@ const PuzzleGen = {
                         [at(3), at(5), rot(answer, 1), rot(answer, -1), rot(answer, 4)]);
                     return { question, answer, distractors, explanation: explain, ruleTypes: ['rotation', 'alternating-steps'], params: { s1, s2, dir } };
                 }
+            },
+            { // PHASE 15A family: alternating-glide — the transform alternates
+                // between a glide reflection (mirror + turn s1) and a PURE
+                // rotation (turn s2). The solver must infer both transforms AND
+                // their alternation: what the transform IS changes each step,
+                // which is what separates this from alternating-rotation (same
+                // transform kind, alternating size).
+                name: 'alternating-glide', min: 4, max: 6,
+                generate: dd => {
+                    const s1 = dd >= 5 ? this.rand(1, 2) : 1;
+                    const s2 = this.rand(1, dd >= 6 ? 3 : 2);
+                    const start = this.rand(0, 7);
+                    const glide = a => rot(mirrorLR[a], s1);
+                    // even steps: glide reflection; odd steps: pure rotation
+                    const at = i => { let a = dirs[start]; for (let s = 0; s < i; s++) a = (s % 2 === 0) ? glide(a) : rot(a, s2); return a; };
+                    const seq = [at(0), at(1), at(2), at(3)];
+                    const answer = at(4);
+                    const question = seq.join('  ') + '  ?';
+                    const explain = `The arrows alternate between two moves: flip left-to-right then turn ${s1 * 45}°, then a plain ${s2 * 45}° turn, over and over, so the next arrow is ${answer}.`;
+                    // Plausible errors: the glide applied on a rotation step,
+                    // the mirror alone, the rotation applied twice, neighbours
+                    const distractors = this.uniqueDistractors(answer,
+                        [glide(at(3)), mirrorLR[answer], rot(answer, s2), rot(answer, 1), rot(answer, -1), rot(answer, 4)]);
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['reflection', 'rotation', 'alternating-steps'], params: { start, s1, s2 } };
+                }
+            },
+            { // PHASE 15A family: alternating-mirror — two DIFFERENT mirror
+                // axes alternate: a plain left-right mirror, then a second
+                // mirror whose axis is offset by k steps (a mirror followed by
+                // a turn is a mirror across a rotated axis). The solver must
+                // infer that the flip direction changes each step and track
+                // both axes; the pair composition is a net rotation.
+                name: 'alternating-mirror', min: 5, max: 6,
+                generate: dd => {
+                    const k = dd >= 6 ? 2 : 1;
+                    const start = this.rand(0, 7);
+                    const M0 = a => mirrorLR[a];
+                    const Mk = a => rot(mirrorLR[a], k);
+                    // even steps: plain mirror; odd steps: offset-axis mirror
+                    const at = i => { let a = dirs[start]; for (let s = 0; s < i; s++) a = (s % 2 === 0) ? M0(a) : Mk(a); return a; };
+                    const seq = [at(0), at(1), at(2), at(3)];
+                    const answer = at(4);
+                    const question = seq.join('  ') + '  ?';
+                    const explain = `The arrows flip across two different mirror lines, one after the other: a plain left-right flip, then a flip across a line ${k * 45}° further around. The next arrow is ${answer}.`;
+                    // Plausible errors: the plain mirror on an offset step,
+                    // the mirror of the answer, and the arrow neighbours
+                    const distractors = this.uniqueDistractors(answer,
+                        [M0(at(3)), mirrorLR[answer], rot(answer, 1), rot(answer, -1), rot(answer, 4)]);
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['reflection', 'rotation'], params: { start, mirrorTurn: k } };
+                }
             }
         ];
         return this._generateFamily('spatial', d, families);
@@ -1855,6 +1905,74 @@ const PuzzleGen = {
                     const distractors = this.uniqueDistractors(answer, colShown);
                     const explain = `Each column contains every symbol exactly once. The ${missingCol + 1}${missingCol === 0 ? 'st' : (missingCol === 1 ? 'nd' : (missingCol === 2 ? 'rd' : 'th'))} column already shows ${colShown.join(' and ')}, so the missing symbol is ${answer}.`;
                     return { question, answer, distractors, explanation: explain, ruleTypes: ['distribution-column'] };
+                }
+            },
+            { // PHASE 15A family: column-alternation — each column strictly
+                // alternates between its OWN symbol pair; the solver must track
+                // a different pair per column and complete the alternation.
+                // Genuinely different from the uniqueness scans: the constraint
+                // is a per-column alternation pattern, not a set-membership
+                // scan, and rows deliberately share no constraint at all.
+                name: 'column-alternation', min: 3, max: 5,
+                generate: dd => {
+                    // Three disjoint symbol pairs from the shape pool
+                    const pool = this.shuffle(this.shapes).slice(0, 6);
+                    const pairs = [[pool[0], pool[1]], [pool[2], pool[3]], [pool[4], pool[5]]];
+                    const missingCol = this.rand(0, 2);
+                    const cols = pairs.map((pr, c) => {
+                        // alternation within the column: top, mid, top
+                        const [top, mid] = this.shuffle(pr);
+                        const bottom = (c === missingCol) ? '?' : top;
+                        return [top, mid, bottom];
+                    });
+                    const answer = cols[missingCol][0];
+                    const rows = [0, 1, 2].map(r => cols.map(col => col[r]));
+                    const lines = [rows[0].join(' '), rows[1].join(' '), rows[2].join(' ')];
+                    const question = lines.join('<br>');
+                    // Plausible errors: the mid symbol (wrong alternation phase),
+                    // and the symbols of the other columns (wrong column tracking)
+                    const distractors = this.uniqueDistractors(answer,
+                        [cols[missingCol][1]].concat(pairs.flat().filter(s => s !== answer)));
+                    const ord = missingCol === 0 ? 'st' : (missingCol === 1 ? 'nd' : 'rd');
+                    const explain = `Each column alternates between its own two symbols. The ${missingCol + 1}${ord} column alternates ${cols[missingCol][0]}, then ${cols[missingCol][1]}, so it continues with ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['distribution-column', 'alternation'], params: { structure: 'column-alternation' } };
+                }
+            },
+            { // PHASE 15A family: cross-constraint — every row AND every column
+                // must contain distinct symbols drawn from a 4-symbol pool
+                // (3 cells per line). Neither constraint alone determines the
+                // answer: the row leaves two candidates, the column leaves two,
+                // and only their intersection is a single symbol. This is the
+                // compound simultaneous-constraint rung of the distribution
+                // ladder (the row/column scans are the single-constraint rungs).
+                name: 'cross-constraint', min: 5, max: 6,
+                generate: dd => {
+                    const pool = this.shuffle(this.shapes).slice(0, 4);
+                    // Verified template over pool indices: every row and every
+                    // column holds distinct indices, and the open cell is fixed
+                    // by BOTH constraints. Column rotation moves the open cell.
+                    const base = [[0, 1, 2], [3, 0, 1], [2, 3, -1]];
+                    const rot = this.rand(0, 2);
+                    const grid = base.map(row => row.map((_, c) => row[(c + rot) % 3]));
+                    const missingCol = (2 - rot + 3) % 3; // where the open cell lands
+                    const colShown = [pool[grid[0][missingCol]], pool[grid[1][missingCol]]];
+                    const rowShown = [pool[grid[2][(missingCol + 1) % 3]], pool[grid[2][(missingCol + 2) % 3]]];
+                    // answer: the single pool symbol excluded by NEITHER constraint
+                    const both = pool.filter(s => !colShown.includes(s) && !rowShown.includes(s));
+                    const answer = both[0]; // exactly one by template construction
+                    const lines = [0, 1, 2].map(r =>
+                        grid[r].map((v, c) => (r === 2 && c === missingCol) ? '?' : pool[v]).join(' '));
+                    const question = lines.join('<br>');
+                    // Plausible errors: the row-only candidate (breaks the column
+                    // constraint), the column-only candidate (breaks the row),
+                    // and a symbol already shown (breaks both)
+                    const rowOnly = pool.filter(s => !rowShown.includes(s) && s !== answer);
+                    const colOnly = pool.filter(s => !colShown.includes(s) && s !== answer);
+                    const distractors = this.uniqueDistractors(answer,
+                        [rowOnly[0], colOnly[0], colShown[0], rowShown[0]]);
+                    const ord = missingCol === 0 ? 'st' : (missingCol === 1 ? 'nd' : 'rd');
+                    const explain = `Every row and every column holds three different symbols. The bottom row already shows ${rowShown.join(' and ')}, and the ${missingCol + 1}${ord} column already shows ${colShown.join(' and ')} — the only symbol that fits both is ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['distribution', 'distribution-column'], params: { structure: 'cross-constraint' } };
                 }
             }
         ];
@@ -2262,6 +2380,63 @@ const PuzzleGen = {
                         : `Two cycles of different lengths are braided together: ${c1.join(' → ')} on the even steps and ${c2.join(' → ')} on the odd steps. The next term continues the ${shown % 2 === 0 ? 'first' : 'second'} cycle: ${answer}.`;
                     return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-interleaved'], params: { structure: st, L1, o1, o2, shown } };
                 }
+            },
+            { // PHASE 15A family: skip-cycle — the advance around the symbol
+                // cycle itself alternates: +1 step, then +2 steps, over and
+                // over. The solver must infer BOTH the cycle and the
+                // alternating advance. Genuinely different from the plain
+                // cycle (constant advance) and from the braids (two separate
+                // interleaved tracks): this is ONE track whose step alternates.
+                name: 'skip-cycle', min: 3, max: 5,
+                generate: dd => {
+                    const k = dd <= 4 ? 3 : 4;
+                    const cyc = this.shuffle(this.shapes).slice(0, k);
+                    const phase = this.rand(0, k - 1);
+                    // position: advance alternates +1 (even steps), +2 (odd steps)
+                    const pos = i => { let p = phase; for (let s = 0; s < i; s++) p += (s % 2 === 0 ? 1 : 2); return ((p % k) + k) % k; };
+                    const shown = 7;
+                    const terms = [];
+                    for (let i = 0; i < shown; i++) terms.push(cyc[pos(i)]);
+                    const answer = cyc[pos(shown)];
+                    const question = terms.join(this.SEP) + this.SEP + '?';
+                    // Plausible errors: assuming a constant skip (+2 continuation),
+                    // and the other cycle symbols (wrong phase)
+                    const pLast = pos(shown - 1);
+                    const distractors = this.uniqueDistractors(answer,
+                        [cyc[(pLast + 2) % k], cyc[(pLast + 3) % k]].concat(cyc.filter(s => s !== answer)));
+                    const explain = `The symbols move around a cycle of ${k}, but the step alternates: one symbol forward, then two symbols forward, over and over. The next symbol is ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-cycle', 'alternating-steps'], params: { structure: 'skip-cycle', k, phase } };
+                }
+            },
+            { // PHASE 15A family: insertion-cycle — a symbol cycle that
+                // advances on 2 of every 3 steps, with a CONSTANT filler
+                // symbol inserted on every third step. The solver must infer
+                // both the 3-step insertion rhythm and the underlying cycle.
+                // Genuinely different from the equal-braid (1-in-2 density,
+                // two varying tracks): here one track is constant and the
+                // rhythm is 1-in-3.
+                name: 'insertion-cycle', min: 5, max: 6,
+                generate: dd => {
+                    const k = 3;
+                    const pool = this.shuffle(this.shapes);
+                    const cyc = pool.slice(0, k);
+                    const filler = pool[3];
+                    const phase = this.rand(0, k - 1);
+                    const shown = 7; // shows the insertion rhythm twice (positions 2 and 5)
+                    const term = i => (i % 3 === 2) ? filler : (() => { let p = phase, n = 0; for (let s = 0; s < i; s++) if (s % 3 !== 2) n++; return cyc[(phase + n) % k]; })();
+                    const terms = [];
+                    for (let i = 0; i < shown; i++) terms.push(term(i));
+                    const answer = term(shown);
+                    const question = terms.join(this.SEP) + this.SEP + '?';
+                    // Plausible errors: the filler (expecting insertion too early),
+                    // the neighbouring cycle symbols (wrong phase)
+                    const adv = i => { let n = 0; for (let s = 0; s < i; s++) if (s % 3 !== 2) n++; return n; };
+                    const nAns = adv(shown);
+                    const distractors = this.uniqueDistractors(answer,
+                        [filler, cyc[(nAns + 1) % k], cyc[(nAns + k - 1) % k]].concat(cyc.filter(s => s !== answer)));
+                    const explain = `Two rhythms share one line: the symbols ${cyc.join(', ')} cycle forward two steps at a time, while ${filler} is inserted every third step. The next term is ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-cycle', 'prediction-interleaved'], params: { structure: 'insertion-cycle', k, phase } };
+                }
             }
         ];
         return this._generateFamily('prediction', d, families);
@@ -2394,7 +2569,13 @@ const PuzzleGen = {
         'rotation': ['start', 'dir'],
         'glide-reflection': ['start'],
         'alternating-rotation': ['start'],
-        'abba-block': ['phase']
+        'abba-block': ['phase'],
+        // Phase 15A families: same established cosmetic-parameter classes
+        // (spatial start orientation; cycle phase rotates the repeating block)
+        'alternating-glide': ['start'],
+        'alternating-mirror': ['start'],
+        'skip-cycle': ['phase'],
+        'insertion-cycle': ['phase']
     },
 
     // Calibration canonical identity: category + family + structure + the
