@@ -2668,15 +2668,23 @@ const DifficultyModel = {
     // Category weights for the final difficulty score (see section 11 of the
     // phase brief). Dimensions irrelevant to a category get weight 0 so they
     // neither inflate nor deflate its score.
+    // Phase 14D-4 calibration: distractorSimilarity reduced 2 -> 1 in every
+    // category where it carried 2. The Phase 14D-3 audit measured this
+    // dimension as legacy glyph-string compensation (option-string edit
+    // distance) with NO monotonic variation across requested difficulty
+    // (pooled means 2.15 at D1 falling to 1.50 at D6) — noise, not
+    // structural signal. Reduced rather than removed: similar distractors
+    // remain structurally plausible alternative readings where present.
+    // All other weights are unchanged.
     WEIGHTS: {
-        quantitative:           { ruleComplexity: 3, inferenceSteps: 3, ruleInteraction: 2, workingMemoryDemand: 1, distractorSimilarity: 2, transformationComplexity: 0 },
-        spatial:                { ruleComplexity: 2, inferenceSteps: 3, ruleInteraction: 1, workingMemoryDemand: 1, distractorSimilarity: 2, transformationComplexity: 3 },
+        quantitative:           { ruleComplexity: 3, inferenceSteps: 3, ruleInteraction: 2, workingMemoryDemand: 1, distractorSimilarity: 1, transformationComplexity: 0 },
+        spatial:                { ruleComplexity: 2, inferenceSteps: 3, ruleInteraction: 1, workingMemoryDemand: 1, distractorSimilarity: 1, transformationComplexity: 3 },
         logical:                { ruleComplexity: 3, inferenceSteps: 3, ruleInteraction: 2, workingMemoryDemand: 1, distractorSimilarity: 0, transformationComplexity: 0 },
-        distribution:           { ruleComplexity: 2, inferenceSteps: 2, ruleInteraction: 2, workingMemoryDemand: 3, distractorSimilarity: 2, transformationComplexity: 0 },
+        distribution:           { ruleComplexity: 2, inferenceSteps: 2, ruleInteraction: 2, workingMemoryDemand: 3, distractorSimilarity: 1, transformationComplexity: 0 },
         alternation:            { ruleComplexity: 3, inferenceSteps: 3, ruleInteraction: 2, workingMemoryDemand: 1, distractorSimilarity: 1, transformationComplexity: 1 },
-        matrix:                 { ruleComplexity: 3, inferenceSteps: 3, ruleInteraction: 2, workingMemoryDemand: 2, distractorSimilarity: 2, transformationComplexity: 2 },
+        matrix:                 { ruleComplexity: 3, inferenceSteps: 3, ruleInteraction: 2, workingMemoryDemand: 2, distractorSimilarity: 1, transformationComplexity: 2 },
         deduction:              { ruleComplexity: 3, inferenceSteps: 3, ruleInteraction: 2, workingMemoryDemand: 3, distractorSimilarity: 1, transformationComplexity: 0 },
-        prediction:             { ruleComplexity: 3, inferenceSteps: 3, ruleInteraction: 2, workingMemoryDemand: 1, distractorSimilarity: 2, transformationComplexity: 0 }
+        prediction:             { ruleComplexity: 3, inferenceSteps: 3, ruleInteraction: 2, workingMemoryDemand: 1, distractorSimilarity: 1, transformationComplexity: 0 }
     },
     
     // Deterministic character-level edit distance (for distractor similarity).
@@ -3022,6 +3030,16 @@ const DifficultyModel = {
     // Weighted mean of the six dimensions (category weights above), then a
     // fixed linear mapping: mean 1.0 -> difficulty 1, mean 5.0 -> difficulty 6.
     // Deterministic and documented; no randomness, no progression input.
+    // Phase 14D-4 calibration: mapping slope 1.25 -> 1.40. The Phase 14D-3
+    // audit measured structural profile means spanning roughly 1.7 (D1
+    // single-rule floors) to 4.0 (second-order / noise-filter ceilings); the
+    // 1.25 slope compressed those into an effective 2-5 band with overlapping
+    // level medians. 1.40 was fitted on the 176-record calibration sample as
+    // the steepest slope that expands level separation WITHOUT inflating D1
+    // floors (>=1.5 pushes D1 logical/quantitative medians to 3) or
+    // saturating upper structures onto the ceiling (>=1.75 collapses
+    // alternating-step and second-order structures onto 6). The structural
+    // profile itself is unchanged — only the linear display mapping.
     toDifficulty(profile, category) {
         const w = DifficultyModel.WEIGHTS[category] || DifficultyModel.WEIGHTS.quantitative;
         let sum = 0, wsum = 0;
@@ -3030,7 +3048,7 @@ const DifficultyModel = {
             wsum += (w[dim] || 0);
         }
         const mean = wsum > 0 ? sum / wsum : 1;
-        const difficulty = Math.round(1 + (mean - 1) * 1.25); // 1..5 -> 1..6
+        const difficulty = Math.round(1 + (mean - 1) * 1.40); // 1..5 -> 1..6 (14D-4 slope)
         return Math.max(1, Math.min(6, difficulty));
     },
     
