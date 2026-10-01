@@ -1663,7 +1663,7 @@ const PuzzleGen = {
                     // are reflection-equivalent and deliberately NOT separate
                     // structures (canonical normalisation removes them).
                     const structs = [
-                        { name: 'constant', min: 1, max: 6 },        // same turn every step (Phase 12A)
+                        { name: 'constant', min: 1, max: 3 },        // Phase 15B: was 1-6; measures 2-3, a single fixed turn is not D5/D6 reasoning
                         { name: 'direction-flip', min: 2, max: 4 },  // turn alternates cw / ccw with unequal sizes
                         { name: 'accelerating', min: 4, max: 6 }     // the turn itself grows every step
                     ].filter(s => dd >= s.min && dd <= s.max);
@@ -1866,7 +1866,10 @@ const PuzzleGen = {
     buildDistribution(d) {
         const families = [
             { // EXISTING family: row-uniqueness (each ROW holds every symbol once)
-                name: 'row-uniqueness', min: 1, max: 6,
+                // Phase 15B: range corrected from 1-6. Measures 2 at every
+                // level (14D-4 calibration, 15B-0 audit: 50% of D6, median 2);
+                // a single-constraint row scan is genuinely D2 reasoning.
+                name: 'row-uniqueness', min: 1, max: 2,
                 generate: dd => {
                     const k = dd <= 3 ? 3 : 4;
                     const set = this.shuffle(this.shapes).slice(0, k);
@@ -2300,7 +2303,7 @@ const PuzzleGen = {
     buildPrediction(d) {
         const families = [
             { // EXISTING family: repeating symbol cycle
-                name: 'cycle', min: 1, max: 6,
+                name: 'cycle', min: 1, max: 2,
                 generate: dd => {
                     const k = dd <= 2 ? 2 : (dd <= 4 ? 3 : 4);
                     const cyc = this.shuffle(this.shapes).slice(0, k);
@@ -2387,7 +2390,11 @@ const PuzzleGen = {
                 // alternating advance. Genuinely different from the plain
                 // cycle (constant advance) and from the braids (two separate
                 // interleaved tracks): this is ONE track whose step alternates.
-                name: 'skip-cycle', min: 3, max: 5,
+                // Phase 15B: max 5 -> 6. Measures 4 (equal to insertion-cycle,
+                // which is D6-eligible); at D6 it renders k=4 with mid-cycle
+                // phase — a genuine superset of its D5 form. 15B-0 audit found
+                // its D6 exclusion inconsistent with its structural complexity.
+                name: 'skip-cycle', min: 3, max: 6,
                 generate: dd => {
                     const k = dd <= 4 ? 3 : 4;
                     const cyc = this.shuffle(this.shapes).slice(0, k);
