@@ -1977,6 +1977,54 @@ const PuzzleGen = {
                     const explain = `Every row and every column holds three different symbols. The bottom row already shows ${rowShown.join(' and ')}, and the ${missingCol + 1}${ord} column already shows ${colShown.join(' and ')} — the only symbol that fits both is ${answer}.`;
                     return { question, answer, distractors, explanation: explain, ruleTypes: ['distribution', 'distribution-column'], params: { structure: 'cross-constraint' } };
                 }
+            },
+            { // PHASE 15D family: diagonal-constraint — every row AND both
+                // main diagonals hold distinct symbols, and the open cell sits
+                // at the CENTRE — the one cell where the two diagonals cross.
+                // The answer is fixed only by the joint row + both-diagonals
+                // constraints. Columns are deliberately NOT a rule here (every
+                // column contains a duplicate), making this a genuinely
+                // different positional-dependency structure from
+                // cross-constraint (rows + columns): the constraint axes are
+                // the row, the NW-SE diagonal and the NE-SW diagonal.
+                name: 'diagonal-constraint', min: 5, max: 6,
+                generate: dd => {
+                    const pool = this.shuffle(this.shapes).slice(0, 4);
+                    // Verified template over pool indices. Centre cell (1,1) open.
+                    // The two free cells (top-middle, bottom-middle) have three
+                    // valid combinations — (q,t) = (0,0), (0,1), (1,1) — chosen so
+                    // the answer symbol pool[3] is always visible in the grid
+                    // ((1,0) would hide it, breaking the shown-alphabet
+                    // convention); the two mirror flags flip the presentation.
+                    // Every variant keeps all rows and both diagonals distinct,
+                    // refutes a column rule (col 0 and col 2 each hold a
+                    // duplicate), and fixes the centre uniquely as the one pool
+                    // symbol excluded by no constraint line.
+                    const qt = this.pick([[0, 0], [0, 1], [1, 1]]);
+                    const q = qt[0], t = qt[1];
+                    const h = this.rand(0, 1), v = this.rand(0, 1);
+                    let base = [
+                        [2, q === 0 ? 3 : 1, 0],
+                        [0, -1, 1],
+                        [2, t === 0 ? 0 : 3, 1]
+                    ];
+                    if (h) base = base.map(r => r.slice().reverse());
+                    if (v) base = base.slice().reverse();
+                    const answer = pool[3];
+                    const sym = (r, c) => (r === 1 && c === 1) ? '?' : pool[base[r][c]];
+                    const lines = [0, 1, 2].map(r => [0, 1, 2].map(c => sym(r, c)).join(' '));
+                    const question = lines.join('<br>');
+                    // Constraint lines through the open centre cell
+                    const mid = [sym(1, 0), sym(1, 2)];       // middle row shown
+                    const d1 = [sym(0, 0), sym(2, 2)];         // NW-SE diagonal shown
+                    const d2 = [sym(0, 2), sym(2, 0)];         // NE-SW diagonal shown
+                    // Plausible errors: every other pool symbol breaks at least
+                    // one of the three lines (verified by template construction)
+                    const distractors = this.uniqueDistractors(answer,
+                        pool.filter(s => s !== answer));
+                    const explain = `Every row and both diagonals hold three different symbols. The middle row already shows ${mid.join(' and ')}, the diagonal from the top-left shows ${d1.join(' and ')}, and the diagonal from the top-right shows ${d2.join(' and ')} — the only symbol that fits all three lines is ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['distribution', 'distribution-diagonal'], params: { structure: 'diagonal-constraint' } };
+                }
             }
         ];
         const family = this._pickFamily('distribution', d, families);
@@ -2415,6 +2463,40 @@ const PuzzleGen = {
                     return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-cycle', 'alternating-steps'], params: { structure: 'skip-cycle', k, phase } };
                 }
             },
+            { // PHASE 15C family: bounce-cycle — a single symbol cycle whose
+                // direction REVERSES at each end: the position runs forward to
+                // the end of the group, then back to the start, over and over.
+                // The solver must infer the group AND the boundary-reflection
+                // rule. Genuinely different from cycle (constant advance),
+                // skip-cycle (alternating step SIZE on one track) and the
+                // braids (two tracks): this is one track whose direction,
+                // not its step, changes at the boundary.
+                name: 'bounce-cycle', min: 3, max: 4,
+                generate: dd => {
+                    const k = dd <= 3 ? 3 : 4;      // cycle group size
+                    const period = 2 * k - 2;       // bounce orbit length: k-1 up, k-1 down
+                    const cyc = this.shuffle(this.shapes).slice(0, k);
+                    const phase = this.rand(0, period - 1); // start anywhere in the orbit
+                    // orbit index j in [0, period): position runs 0..k-1 then k-2..1
+                    const posOf = i => {
+                        const j = ((phase + i) % period + period) % period;
+                        return j < k ? j : period - j;
+                    };
+                    const shown = 7;
+                    const terms = [];
+                    for (let i = 0; i < shown; i++) terms.push(cyc[posOf(i)]);
+                    const answer = cyc[posOf(shown)];
+                    const question = terms.join(this.SEP) + this.SEP + '?';
+                    // Plausible errors: continuing forward as if a plain cycle
+                    // (ignoring the bounce), stepping backward as a plain
+                    // cycle, and the other group symbols (wrong phase)
+                    const pLast = posOf(shown - 1);
+                    const distractors = this.uniqueDistractors(answer,
+                        [cyc[(pLast + 1) % k], cyc[(pLast + k - 1) % k]].concat(cyc.filter(s => s !== answer)));
+                    const explain = `The symbols run forward to the end of their group, then back again, over and over, so the next symbol is ${answer}.`;
+                    return { question, answer, distractors, explanation: explain, ruleTypes: ['prediction-cycle', 'direction-reversal'], params: { structure: 'bounce-cycle', k, phase } };
+                }
+            },
             { // PHASE 15A family: insertion-cycle — a symbol cycle that
                 // advances on 2 of every 3 steps, with a CONSTANT filler
                 // symbol inserted on every third step. The solver must infer
@@ -2582,7 +2664,9 @@ const PuzzleGen = {
         'alternating-glide': ['start'],
         'alternating-mirror': ['start'],
         'skip-cycle': ['phase'],
-        'insertion-cycle': ['phase']
+        'insertion-cycle': ['phase'],
+        // Phase 15C: orbit phase rotates the same bounce pattern
+        'bounce-cycle': ['phase']
     },
 
     // Calibration canonical identity: category + family + structure + the
